@@ -47,6 +47,7 @@ Fairness rules in this repository:
 - `minisolver`
 - `acados`
 - `casadi`
+- `clarabel` for convex asset cases only
 
 ## External Reference Assets
 
@@ -138,6 +139,12 @@ Run all public-asset-derived CasADi benchmark candidates:
 
 ```bash
 python3 backends/casadi/run_candidates.py
+```
+
+Run all convex Clarabel asset candidates:
+
+```bash
+python3 backends/clarabel/run_candidates.py
 ```
 
 Run a single asset-derived candidate:

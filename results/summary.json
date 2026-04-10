@@ -245,6 +245,36 @@
     "success_rate": 0.0
   },
   {
+    "avg_iterations": 7.684,
+    "avg_tracking_error": 0.16899877348709666,
+    "backend": "clarabel",
+    "backend_family": "clarabel",
+    "case_name": "data_driven_mpc_lemniscate_tracking",
+    "file": "results/raw/clarabel/data_driven_mpc_lemniscate_tracking.csv",
+    "final_tracking_error": 0.00197783060256358,
+    "max_constraint_violation": 0.0,
+    "max_ms": 0.655285082757473,
+    "median_ms": 0.33398898085579276,
+    "p95_ms": 0.5598523013759403,
+    "steps": 500,
+    "success_rate": 1.0
+  },
+  {
+    "avg_iterations": 7.092,
+    "avg_tracking_error": 0.02916288021247394,
+    "backend": "clarabel",
+    "backend_family": "clarabel",
+    "case_name": "data_driven_mpc_loop_tracking",
+    "file": "results/raw/clarabel/data_driven_mpc_loop_tracking.csv",
+    "final_tracking_error": 0.0023296383419698645,
+    "max_constraint_violation": 0.0,
+    "max_ms": 0.625604996457696,
+    "median_ms": 0.31879852758720517,
+    "p95_ms": 0.5607334489468485,
+    "steps": 500,
+    "success_rate": 1.0
+  },
+  {
     "avg_iterations": 3.56,
     "backend": "minisolver",
     "backend_family": "minisolver",

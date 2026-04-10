@@ -45,7 +45,7 @@ def lookup(records: list[dict]) -> dict[tuple[str, str], dict]:
 
 
 def render_rows(case_names: list[str], by_key: dict[tuple[str, str], dict]) -> list[str]:
-    backend_order = ("minisolver", "acados", "casadi")
+    backend_order = ("minisolver", "acados", "casadi", "clarabel")
     rows: list[str] = []
     for case in case_names:
         for backend in backend_order:
@@ -108,13 +108,14 @@ def main() -> int:
         "- `MiniSolver` asset benchmarks use MiniSolver Python model generation plus native C++ solve runners.",
         "- `acados` asset benchmarks use Python export/codegen and compiled C closed-loop runners. Python export time is excluded.",
         "- `CasADi` asset benchmarks use native C++ runners with `nlpsol('sqpmethod')`; one-time graph construction is excluded from the per-step timing.",
+        "- `Clarabel` is included only for convex robotics QP cases. It is not run on the nonconvex driving NMPC cases.",
         "- The two robotics cases are the cleanest current baselines. MiniSolver and acados are in the same sub-millisecond class there; CasADi is about two orders slower.",
         "- `nonlinear_mpcc_porto_following` and `nonlinear_mpcc_fssim_following` are currently the best driving baselines. acados is much faster there; MiniSolver is competitive on success rate; CasADi is much slower with heavy tail latency.",
         "- `mpcc_track_following` should not be used for headline conclusions yet. It is still exposing model/setup mismatch rather than a stable solver ranking.",
         "",
         "## Files",
         "",
-        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/casadi/`",
+        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/casadi/`, `results/raw/clarabel/`",
         "- Aggregate CSV: `results/summary.csv`",
         "- Aggregate JSON: `results/summary.json`",
     ]

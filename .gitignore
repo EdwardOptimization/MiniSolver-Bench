@@ -13,5 +13,7 @@ results/raw/**
 !results/raw/minisolver/.gitkeep
 !results/raw/ipopt/
 !results/raw/ipopt/.gitkeep
+!results/raw/clarabel/
+!results/raw/clarabel/.gitkeep
 results/figures/**
 !results/figures/.gitkeep

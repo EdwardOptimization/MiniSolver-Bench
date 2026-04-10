@@ -16,6 +16,8 @@ avg_abs_b,avg_abs_n,avg_iterations,avg_speed,avg_tracking_error,backend,backend_
 ,,1.4416666666666667,0.26825606210286207,0.42282562285502723,casadi,casadi,nonlinear_mpcc_porto_following,results/raw/casadi/nonlinear_mpcc_porto_following.csv,,0.2719514515167827,0.0,4761.420949,185.8725485,,193.41997650000002,600,0.9833333333333333
 ,,3.64,,,casadi,casadi,pendulum_on_cart,results/raw/casadi/pendulum_on_cart.csv,0.001670395,,,1671.615664032,1.7181014989999999,,284.4566059471998,100,0.98
 ,,0.06,nan,,casadi,casadi,race_cars,results/raw/casadi/race_cars.csv,,,,2937.700935057,2.476204012,,2.5256486728,500,0.0
+,,7.684,,0.16899877348709666,clarabel,clarabel,data_driven_mpc_lemniscate_tracking,results/raw/clarabel/data_driven_mpc_lemniscate_tracking.csv,,0.00197783060256358,0.0,0.655285082757473,0.33398898085579276,,0.5598523013759403,500,1.0
+,,7.092,,0.02916288021247394,clarabel,clarabel,data_driven_mpc_loop_tracking,results/raw/clarabel/data_driven_mpc_loop_tracking.csv,,0.0023296383419698645,0.0,0.625604996457696,0.31879852758720517,,0.5607334489468485,500,1.0
 ,,3.56,,,minisolver,minisolver,chain_mass,results/raw/minisolver/chain_mass.csv,,,0.0,5.73771,2.1442,0.00112253,3.839347999999998,25,1.0
 ,,2.002,,5.648557738671284,minisolver,minisolver,data_driven_mpc_lemniscate_tracking,results/raw/minisolver/data_driven_mpc_lemniscate_tracking.csv,,9.646055316430338,0.0,0.164849,0.0837195,,0.08780284999999993,500,1.0
 ,,2.002,,6.1811574664496804,minisolver,minisolver,data_driven_mpc_loop_tracking,results/raw/minisolver/data_driven_mpc_loop_tracking.csv,,10.490668556148359,0.0,0.136348,0.0838015,,0.09153149999999999,500,1.0
