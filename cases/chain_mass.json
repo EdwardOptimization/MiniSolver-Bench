@@ -1,0 +1,18 @@
+{
+  "name": "chain_mass",
+  "description": "Disturbed chain-mass NMPC from the official acados chain_mass example.",
+  "official_example": "examples/acados_python/chain_mass/main.py",
+  "default_steps": 25,
+  "backends": {
+    "minisolver": {
+      "supported": true
+    },
+    "acados": {
+      "supported": true,
+      "runner_template": "chain_mass_main.c.in"
+    },
+    "casadi": {
+      "supported": true
+    }
+  }
+}

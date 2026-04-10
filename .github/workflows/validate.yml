@@ -1,0 +1,19 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m py_compile run.py cases.py backends/minisolver/run.py backends/acados/run.py backends/acados/run_all.py backends/ipopt/run.py plots/plot_results.py
+      - run: python run.py --help
+      - run: python backends/minisolver/run.py --help
+      - run: python backends/acados/run.py --help
+      - run: python backends/ipopt/run.py --help || true

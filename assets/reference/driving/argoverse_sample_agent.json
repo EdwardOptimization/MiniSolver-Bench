@@ -1,0 +1,12 @@
+{
+  "description": "Argoverse forecasting sample trajectory for AGENT.",
+  "domain": "autonomous_driving",
+  "file": "assets/reference/driving/argoverse_sample_agent.csv",
+  "kind": "trajectory",
+  "name": "argoverse_sample_agent",
+  "points": 2,
+  "schema": "xy_trajectory_v1",
+  "source_commit": "f886ac54fba9f06f8a7d109eb663c7f501b3aa8e",
+  "source_path": "tests/test_data/forecasting/0.csv",
+  "source_repo": "https://github.com/argoverse/argoverse-api"
+}

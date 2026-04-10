@@ -1,0 +1,12 @@
+{
+  "description": "Loop reference reconstructed from the public trajectory_test defaults in data_driven_mpc.",
+  "domain": "robotics",
+  "file": "assets/reference/robotics/data_driven_mpc_loop.csv",
+  "kind": "reference_trajectory",
+  "name": "data_driven_mpc_loop",
+  "points": 500,
+  "schema": "xyz_reference_kinematics_v1",
+  "source_commit": "a6be5d301e66d91a823ef68a29c79ccc5829f1b9",
+  "source_path": "ros_gp_mpc/src/experiments/trajectory_test.py + ros_gp_mpc/src/utils/trajectories.py",
+  "source_repo": "https://github.com/uzh-rpg/data_driven_mpc"
+}

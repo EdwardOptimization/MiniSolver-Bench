@@ -1,0 +1,6 @@
+[submodule "third_party/MiniSolver"]
+	path = third_party/MiniSolver
+	url = https://github.com/EdwardOptimization/MiniSolver.git
+[submodule "third_party/acados"]
+	path = third_party/acados
+	url = https://github.com/acados/acados.git

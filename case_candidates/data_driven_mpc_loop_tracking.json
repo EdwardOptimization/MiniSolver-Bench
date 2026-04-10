@@ -1,0 +1,20 @@
+{
+  "name": "data_driven_mpc_loop_tracking",
+  "domain": "robotics",
+  "asset": "assets/reference/robotics/data_driven_mpc_loop.csv",
+  "asset_schema": "xyz_reference_kinematics_v1",
+  "source_family": "data_driven_mpc",
+  "model_family": "double_integrator_3d_tracking",
+  "task": "reference_tracking",
+  "dt": 0.04,
+  "horizon": 25,
+  "closed_loop_steps": 500,
+  "metrics": [
+    "solve_time_ms",
+    "success_rate",
+    "position_rmse",
+    "velocity_rmse",
+    "max_constraint_violation"
+  ],
+  "notes": "Public loop trajectory reconstructed from the data_driven_mpc paper code defaults."
+}

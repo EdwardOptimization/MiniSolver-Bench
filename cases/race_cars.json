@@ -1,0 +1,18 @@
+{
+  "name": "race_cars",
+  "description": "Spatial race-car NMPC from the official acados race_cars example.",
+  "official_example": "examples/acados_python/race_cars/main.py",
+  "default_steps": 500,
+  "backends": {
+    "minisolver": {
+      "supported": true
+    },
+    "acados": {
+      "supported": true,
+      "runner_template": "race_cars_main.c.in"
+    },
+    "casadi": {
+      "supported": true
+    }
+  }
+}

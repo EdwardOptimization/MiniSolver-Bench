@@ -1,0 +1,193 @@
+// Generated closed-loop benchmark runner for @CASE_NAME@.
+
+#include <math.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "acados_c/ocp_nlp_interface.h"
+#include "acados_c/sim_interface.h"
+#include "acados_solver_@MODEL_NAME@.h"
+#include "acados_sim_solver_@MODEL_NAME@.h"
+
+#define NX @MODEL_UPPER@_NX
+#define NU @MODEL_UPPER@_NU
+#define N_DEFAULT @STEPS_DEFAULT@
+
+static int cmp_double(const void *a, const void *b)
+{
+    double da = *(const double *) a;
+    double db = *(const double *) b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
+static double percentile(const double *values, int n, double frac)
+{
+    if (n <= 0) return 0.0;
+    double *tmp = (double *) malloc((size_t) n * sizeof(double));
+    for (int i = 0; i < n; ++i) tmp[i] = values[i];
+    qsort(tmp, (size_t) n, sizeof(double), cmp_double);
+    const double idx = frac * (double) (n - 1);
+    const int lo = (int) floor(idx);
+    const int hi = (int) ceil(idx);
+    const double w = idx - (double) lo;
+    const double out = tmp[lo] * (1.0 - w) + tmp[hi] * w;
+    free(tmp);
+    return out;
+}
+
+int main(int argc, char **argv)
+{
+    int max_steps = N_DEFAULT;
+    const char *output_path = "benchmarks/results/acados/quadrotor_nav.csv";
+    for (int i = 1; i < argc; ++i)
+    {
+        if (!strcmp(argv[i], "--steps") && i + 1 < argc)
+        {
+            max_steps = atoi(argv[++i]);
+            continue;
+        }
+        if (!strcmp(argv[i], "--output") && i + 1 < argc)
+        {
+            output_path = argv[++i];
+            continue;
+        }
+        fprintf(stderr, "Unknown argument: %s\n", argv[i]);
+        return 1;
+    }
+
+    @MODEL_NAME@_solver_capsule *solver_capsule = @MODEL_NAME@_acados_create_capsule();
+    @MODEL_NAME@_sim_solver_capsule *sim_capsule = @MODEL_NAME@_acados_sim_solver_create_capsule();
+    if (@MODEL_NAME@_acados_create(solver_capsule) != 0 || @MODEL_NAME@_acados_sim_create(sim_capsule) != 0)
+    {
+        fprintf(stderr, "Failed to create solver or sim capsule\n");
+        return 1;
+    }
+
+    ocp_nlp_config *nlp_config = @MODEL_NAME@_acados_get_nlp_config(solver_capsule);
+    ocp_nlp_dims *nlp_dims = @MODEL_NAME@_acados_get_nlp_dims(solver_capsule);
+    ocp_nlp_in *nlp_in = @MODEL_NAME@_acados_get_nlp_in(solver_capsule);
+    ocp_nlp_out *nlp_out = @MODEL_NAME@_acados_get_nlp_out(solver_capsule);
+    ocp_nlp_solver *nlp_solver = @MODEL_NAME@_acados_get_nlp_solver(solver_capsule);
+
+    sim_config *sim_config = @MODEL_NAME@_acados_get_sim_config(sim_capsule);
+    void *sim_dims = @MODEL_NAME@_acados_get_sim_dims(sim_capsule);
+    sim_in *sim_in = @MODEL_NAME@_acados_get_sim_in(sim_capsule);
+    sim_out *sim_out = @MODEL_NAME@_acados_get_sim_out(sim_capsule);
+
+    double xcurrent[NX] = {@INIT_ZETA@};
+    double *times = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *abs_n = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *abs_b = (double *) calloc((size_t) max_steps, sizeof(double));
+    int *statuses = (int *) calloc((size_t) max_steps, sizeof(int));
+
+    int executed = 0;
+    const int horizon = @HORIZON@;
+    for (int step = 0; step < max_steps; ++step)
+    {
+        const double s0 = xcurrent[0];
+        if (s0 >= @S_MAX@)
+        {
+            break;
+        }
+        const double sref = s0 + @S_REF@;
+        const double sref_dot = @S_REF@ / @TF@;
+        for (int j = 0; j < horizon; ++j)
+        {
+            const double sref_j = s0 + (sref - s0) * ((double) j / (double) horizon);
+            double yref[24] = {
+                sref_j, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                sref_dot, 0.0, 0.0,
+                0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0,
+                @U_HOV@, @U_HOV@, @U_HOV@, @U_HOV@,
+                0.0, 0.0, 0.0, 0.0
+            };
+            ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, j, "yref", yref);
+        }
+        double yref_N[20] = {
+            sref, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            sref_dot, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            @U_HOV@, @U_HOV@, @U_HOV@, @U_HOV@
+        };
+        ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, horizon, "yref", yref_N);
+
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
+
+        int status = @MODEL_NAME@_acados_solve(solver_capsule);
+        double elapsed1 = 0.0;
+        ocp_nlp_get(nlp_solver, "time_tot", &elapsed1);
+
+        double u0[NU];
+        ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
+        sim_in_set(sim_config, sim_dims, sim_in, "x", xcurrent);
+        sim_in_set(sim_config, sim_dims, sim_in, "u", u0);
+        if (@MODEL_NAME@_acados_sim_solve(sim_capsule) != 0)
+        {
+            status = -1;
+        }
+        sim_out_get(sim_config, sim_dims, sim_out, "x", xcurrent);
+
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
+        status = @MODEL_NAME@_acados_solve(solver_capsule);
+        double elapsed2 = 0.0;
+        ocp_nlp_get(nlp_solver, "time_tot", &elapsed2);
+
+        times[executed] = (elapsed1 + elapsed2) * 1000.0;
+        abs_n[executed] = fabs(xcurrent[1]);
+        abs_b[executed] = fabs(xcurrent[2]);
+        statuses[executed] = status;
+        executed++;
+    }
+
+    FILE *csv = fopen(output_path, "w");
+    if (!csv)
+    {
+        perror("fopen");
+        return 1;
+    }
+    fprintf(csv, "step,status,time_ms,abs_n,abs_b\n");
+    int success = 0;
+    double max_ms = 0.0;
+    double sum_abs_n = 0.0;
+    double sum_abs_b = 0.0;
+    for (int i = 0; i < executed; ++i)
+    {
+        fprintf(csv, "%d,%d,%.9f,%.9f,%.9f\n", i, statuses[i], times[i], abs_n[i], abs_b[i]);
+        if (statuses[i] == 0) success++;
+        if (times[i] > max_ms) max_ms = times[i];
+        sum_abs_n += abs_n[i];
+        sum_abs_b += abs_b[i];
+    }
+    fclose(csv);
+
+    printf("case=%s steps=%d success=%d median_ms=%.6f p95_ms=%.6f max_ms=%.6f avg_abs_n=%.6f avg_abs_b=%.6f output=%s\n",
+           "@CASE_NAME@",
+           executed,
+           success,
+           percentile(times, executed, 0.5),
+           percentile(times, executed, 0.95),
+           max_ms,
+           executed > 0 ? sum_abs_n / executed : 0.0,
+           executed > 0 ? sum_abs_b / executed : 0.0,
+           output_path);
+
+    free(times);
+    free(abs_n);
+    free(abs_b);
+    free(statuses);
+    @MODEL_NAME@_acados_sim_free(sim_capsule);
+    @MODEL_NAME@_acados_sim_solver_free_capsule(sim_capsule);
+    @MODEL_NAME@_acados_free(solver_capsule);
+    @MODEL_NAME@_acados_free_capsule(solver_capsule);
+    return 0;
+}

@@ -1,0 +1,298 @@
+// Generated asset benchmark runner for @CANDIDATE_NAME@.
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+
+#include "acados_c/ocp_nlp_interface.h"
+#include "acados_solver_@MODEL_NAME@.h"
+
+#define NX @MODEL_UPPER@_NX
+#define NU @MODEL_UPPER@_NU
+#define NP @MODEL_UPPER@_NP
+#define N_HORIZON @MODEL_UPPER@_N
+#define STEPS_DEFAULT @STEPS_DEFAULT@
+
+typedef struct
+{
+    int count;
+    int cap;
+    double *t;
+    double *x;
+    double *y;
+    double *z;
+    double *vx;
+    double *vy;
+    double *vz;
+} robot_reference_t;
+
+static int cmp_double(const void *a, const void *b)
+{
+    const double da = *(const double *) a;
+    const double db = *(const double *) b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
+static double percentile(const double *values, int n, double frac)
+{
+    if (n <= 0) return 0.0;
+    double *tmp = (double *) malloc((size_t) n * sizeof(double));
+    for (int i = 0; i < n; ++i) tmp[i] = values[i];
+    qsort(tmp, (size_t) n, sizeof(double), cmp_double);
+    const double idx = frac * (double) (n - 1);
+    const int lo = (int) floor(idx);
+    const int hi = (int) ceil(idx);
+    const double w = idx - (double) lo;
+    const double out = tmp[lo] * (1.0 - w) + tmp[hi] * w;
+    free(tmp);
+    return out;
+}
+
+static int split_csv(char *line, char **parts, int max_parts)
+{
+    int count = 0;
+    char *saveptr = NULL;
+    for (char *tok = strtok_r(line, ",", &saveptr); tok && count < max_parts; tok = strtok_r(NULL, ",", &saveptr))
+    {
+        while (*tok == ' ' || *tok == '\t') ++tok;
+        size_t len = strlen(tok);
+        while (len > 0 && (tok[len - 1] == '\n' || tok[len - 1] == '\r' || tok[len - 1] == ' ' || tok[len - 1] == '\t'))
+        {
+            tok[--len] = '\0';
+        }
+        parts[count++] = tok;
+    }
+    return count;
+}
+
+static int csv_index(char **headers, int n_headers, const char *name)
+{
+    for (int i = 0; i < n_headers; ++i)
+    {
+        if (!strcmp(headers[i], name)) return i;
+    }
+    return -1;
+}
+
+static void ref_reserve(robot_reference_t *ref, int cap)
+{
+    if (cap <= ref->cap) return;
+    ref->cap = cap;
+    ref->t = (double *) realloc(ref->t, (size_t) cap * sizeof(double));
+    ref->x = (double *) realloc(ref->x, (size_t) cap * sizeof(double));
+    ref->y = (double *) realloc(ref->y, (size_t) cap * sizeof(double));
+    ref->z = (double *) realloc(ref->z, (size_t) cap * sizeof(double));
+    ref->vx = (double *) realloc(ref->vx, (size_t) cap * sizeof(double));
+    ref->vy = (double *) realloc(ref->vy, (size_t) cap * sizeof(double));
+    ref->vz = (double *) realloc(ref->vz, (size_t) cap * sizeof(double));
+}
+
+static void ref_free(robot_reference_t *ref)
+{
+    free(ref->t);
+    free(ref->x);
+    free(ref->y);
+    free(ref->z);
+    free(ref->vx);
+    free(ref->vy);
+    free(ref->vz);
+    memset(ref, 0, sizeof(*ref));
+}
+
+static int load_reference(const char *path, robot_reference_t *ref)
+{
+    FILE *fp = fopen(path, "r");
+    if (!fp) return 0;
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen = getline(&line, &linecap, fp);
+    if (linelen <= 0)
+    {
+        fclose(fp);
+        free(line);
+        return 0;
+    }
+    char *headers_buf = strdup(line);
+    char *headers[32];
+    int n_headers = split_csv(headers_buf, headers, 32);
+    int idx_t = csv_index(headers, n_headers, "t");
+    int idx_x = csv_index(headers, n_headers, "x");
+    int idx_y = csv_index(headers, n_headers, "y");
+    int idx_z = csv_index(headers, n_headers, "z");
+    int idx_vx = csv_index(headers, n_headers, "vx");
+    int idx_vy = csv_index(headers, n_headers, "vy");
+    int idx_vz = csv_index(headers, n_headers, "vz");
+    free(headers_buf);
+    if (idx_t < 0 || idx_vz < 0)
+    {
+        fclose(fp);
+        free(line);
+        return 0;
+    }
+
+    while ((linelen = getline(&line, &linecap, fp)) > 0)
+    {
+        if (ref->count == ref->cap) ref_reserve(ref, ref->cap > 0 ? 2 * ref->cap : 256);
+        char *parts_buf = strdup(line);
+        char *parts[32];
+        int n_parts = split_csv(parts_buf, parts, 32);
+        if (n_parts > idx_vz)
+        {
+            ref->t[ref->count] = atof(parts[idx_t]);
+            ref->x[ref->count] = atof(parts[idx_x]);
+            ref->y[ref->count] = atof(parts[idx_y]);
+            ref->z[ref->count] = atof(parts[idx_z]);
+            ref->vx[ref->count] = atof(parts[idx_vx]);
+            ref->vy[ref->count] = atof(parts[idx_vy]);
+            ref->vz[ref->count] = atof(parts[idx_vz]);
+            ref->count++;
+        }
+        free(parts_buf);
+    }
+    fclose(fp);
+    free(line);
+    return ref->count > 0;
+}
+
+static void stage_params(const robot_reference_t *ref, int idx, double *p)
+{
+    p[0] = ref->x[idx];
+    p[1] = ref->y[idx];
+    p[2] = ref->z[idx];
+    p[3] = ref->vx[idx];
+    p[4] = ref->vy[idx];
+    p[5] = ref->vz[idx];
+}
+
+int main(int argc, char **argv)
+{
+    const char *asset_path = NULL;
+    const char *output_path = "results/raw/acados/@CANDIDATE_NAME@.csv";
+    int steps = STEPS_DEFAULT;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (!strcmp(argv[i], "--asset") && i + 1 < argc) { asset_path = argv[++i]; continue; }
+        if (!strcmp(argv[i], "--output") && i + 1 < argc) { output_path = argv[++i]; continue; }
+        if (!strcmp(argv[i], "--steps") && i + 1 < argc) { steps = atoi(argv[++i]); continue; }
+        fprintf(stderr, "Unknown argument: %s\n", argv[i]);
+        return 1;
+    }
+    if (!asset_path)
+    {
+        fprintf(stderr, "--asset is required\n");
+        return 1;
+    }
+
+    robot_reference_t ref = {0};
+    if (!load_reference(asset_path, &ref))
+    {
+        fprintf(stderr, "failed to load robot reference: %s\n", asset_path);
+        return 1;
+    }
+    if (steps > ref.count) steps = ref.count;
+
+    @MODEL_NAME@_solver_capsule *solver_capsule = @MODEL_NAME@_acados_create_capsule();
+    if (@MODEL_NAME@_acados_create(solver_capsule) != 0)
+    {
+        fprintf(stderr, "@MODEL_NAME@_acados_create failed\n");
+        ref_free(&ref);
+        return 1;
+    }
+
+    ocp_nlp_config *nlp_config = @MODEL_NAME@_acados_get_nlp_config(solver_capsule);
+    ocp_nlp_dims *nlp_dims = @MODEL_NAME@_acados_get_nlp_dims(solver_capsule);
+    ocp_nlp_in *nlp_in = @MODEL_NAME@_acados_get_nlp_in(solver_capsule);
+    ocp_nlp_out *nlp_out = @MODEL_NAME@_acados_get_nlp_out(solver_capsule);
+    ocp_nlp_solver *nlp_solver = @MODEL_NAME@_acados_get_nlp_solver(solver_capsule);
+
+    const double dt = @DT@;
+    double xcurrent[NX] = {ref.x[0], ref.y[0], ref.z[0], ref.vx[0], ref.vy[0], ref.vz[0]};
+    double x_guess[NX] = {ref.x[0], ref.y[0], ref.z[0], ref.vx[0], ref.vy[0], ref.vz[0]};
+    double u_guess[NU] = {0.0, 0.0, 0.0};
+    for (int k = 0; k < N_HORIZON; ++k)
+    {
+        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "x", x_guess);
+        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "u", u_guess);
+    }
+    ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, N_HORIZON, "x", x_guess);
+
+    FILE *csv = fopen(output_path, "w");
+    if (!csv)
+    {
+        perror("fopen");
+        @MODEL_NAME@_acados_free(solver_capsule);
+        @MODEL_NAME@_acados_free_capsule(solver_capsule);
+        ref_free(&ref);
+        return 1;
+    }
+    fprintf(csv, "step,status,time_ms,iterations,x,y,z,vx,vy,vz,tracking_error,max_constraint_violation\n");
+
+    double *times = (double *) calloc((size_t) steps, sizeof(double));
+    int success = 0;
+    for (int step = 0; step < steps; ++step)
+    {
+        double p_stage[NP];
+        for (int k = 0; k <= N_HORIZON; ++k)
+        {
+            const int idx = step + k < ref.count ? step + k : ref.count - 1;
+            stage_params(&ref, idx, p_stage);
+            @MODEL_NAME@_acados_update_params(solver_capsule, k, p_stage, NP);
+        }
+
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
+
+        int status = @MODEL_NAME@_acados_solve(solver_capsule);
+        double elapsed = 0.0;
+        int sqp_iter = 0;
+        ocp_nlp_get(nlp_solver, "time_tot", &elapsed);
+        ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
+
+        double u0[NU];
+        ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
+        const double dx = xcurrent[0] - ref.x[step];
+        const double dy = xcurrent[1] - ref.y[step];
+        const double dz = xcurrent[2] - ref.z[step];
+        const double tracking_error = sqrt(dx * dx + dy * dy + dz * dz);
+        double max_viol = 0.0;
+        const double cands[6] = {
+            u0[0] - 15.0, -15.0 - u0[0],
+            u0[1] - 15.0, -15.0 - u0[1],
+            u0[2] - 15.0, -15.0 - u0[2],
+        };
+        for (int i = 0; i < 6; ++i) if (cands[i] > max_viol) max_viol = cands[i];
+
+        fprintf(csv, "%d,%d,%.9f,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
+                step, status, elapsed * 1000.0, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4], xcurrent[5],
+                tracking_error, max_viol);
+        if (status == 0) success++;
+        times[step] = elapsed * 1000.0;
+
+        xcurrent[0] += xcurrent[3] * dt + 0.5 * u0[0] * dt * dt;
+        xcurrent[1] += xcurrent[4] * dt + 0.5 * u0[1] * dt * dt;
+        xcurrent[2] += xcurrent[5] * dt + 0.5 * u0[2] * dt * dt;
+        xcurrent[3] += u0[0] * dt;
+        xcurrent[4] += u0[1] * dt;
+        xcurrent[5] += u0[2] * dt;
+    }
+    fclose(csv);
+
+    double max_ms = 0.0;
+    for (int i = 0; i < steps; ++i) if (times[i] > max_ms) max_ms = times[i];
+    printf("candidate=%s steps=%d success=%d median_ms=%.6f p95_ms=%.6f max_ms=%.6f output=%s\n",
+           "@CANDIDATE_NAME@", steps, success, percentile(times, steps, 0.5), percentile(times, steps, 0.95), max_ms, output_path);
+
+    free(times);
+    @MODEL_NAME@_acados_free(solver_capsule);
+    @MODEL_NAME@_acados_free_capsule(solver_capsule);
+    ref_free(&ref);
+    return 0;
+}

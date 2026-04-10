@@ -1,0 +1,12 @@
+{
+  "description": "Nonlinear MPCC fssim track with centerline and left/right widths.",
+  "domain": "autonomous_driving",
+  "file": "assets/reference/driving/nonlinear_mpcc_fssim.csv",
+  "kind": "closed_track",
+  "name": "nonlinear_mpcc_fssim",
+  "points": 1124,
+  "schema": "driving_track_center_widths_v1",
+  "source_commit": "b4b39c1a87e9fed1d37944e97e7a147c70977d94",
+  "source_path": "nonlinear_mpc_casadi/scripts/fssim",
+  "source_repo": "https://github.com/nirajbasnet/Nonlinear_MPCC_for_autonomous_racing"
+}

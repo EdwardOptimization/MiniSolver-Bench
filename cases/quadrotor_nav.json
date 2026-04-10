@@ -1,0 +1,18 @@
+{
+  "name": "quadrotor_nav",
+  "description": "Tunnel-following quadrotor NMPC from the official acados quadrotor_nav example.",
+  "official_example": "examples/acados_python/quadrotor_nav/main.py",
+  "default_steps": 2250,
+  "backends": {
+    "minisolver": {
+      "supported": true
+    },
+    "acados": {
+      "supported": true,
+      "runner_template": "quadrotor_nav_main.c.in"
+    },
+    "casadi": {
+      "supported": true
+    }
+  }
+}

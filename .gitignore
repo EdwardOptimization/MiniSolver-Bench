@@ -1,0 +1,17 @@
+.cache/
+.vscode/
+__pycache__/
+*.pyc
+.build/
+build/
+out/
+results/raw/**
+!results/raw/.gitkeep
+!results/raw/acados/
+!results/raw/acados/.gitkeep
+!results/raw/minisolver/
+!results/raw/minisolver/.gitkeep
+!results/raw/ipopt/
+!results/raw/ipopt/.gitkeep
+results/figures/**
+!results/figures/.gitkeep

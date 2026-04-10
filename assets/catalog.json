@@ -1,0 +1,86 @@
+[
+  {
+    "description": "ETH MPCC closed track with centerline and inner/outer boundaries.",
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/mpcc_track.csv",
+    "kind": "closed_track",
+    "name": "mpcc_track",
+    "points": 489,
+    "schema": "driving_track_center_bounds_v1",
+    "source_commit": "bd331621ba47ae3326711922a863bdb1cdf2d2ea",
+    "source_path": "C++/Params/track.json",
+    "source_repo": "https://github.com/alexliniger/MPCC"
+  },
+  {
+    "description": "Nonlinear MPCC porto track with centerline and left/right widths.",
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/nonlinear_mpcc_porto.csv",
+    "kind": "closed_track",
+    "name": "nonlinear_mpcc_porto",
+    "points": 525,
+    "schema": "driving_track_center_widths_v1",
+    "source_commit": "b4b39c1a87e9fed1d37944e97e7a147c70977d94",
+    "source_path": "nonlinear_mpc_casadi/scripts/porto",
+    "source_repo": "https://github.com/nirajbasnet/Nonlinear_MPCC_for_autonomous_racing"
+  },
+  {
+    "description": "Nonlinear MPCC fssim track with centerline and left/right widths.",
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/nonlinear_mpcc_fssim.csv",
+    "kind": "closed_track",
+    "name": "nonlinear_mpcc_fssim",
+    "points": 1124,
+    "schema": "driving_track_center_widths_v1",
+    "source_commit": "b4b39c1a87e9fed1d37944e97e7a147c70977d94",
+    "source_path": "nonlinear_mpc_casadi/scripts/fssim",
+    "source_repo": "https://github.com/nirajbasnet/Nonlinear_MPCC_for_autonomous_racing"
+  },
+  {
+    "description": "Argoverse forecasting sample trajectory for AV.",
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/argoverse_sample_av.csv",
+    "kind": "trajectory",
+    "name": "argoverse_sample_av",
+    "points": 2,
+    "schema": "xy_trajectory_v1",
+    "source_commit": "f886ac54fba9f06f8a7d109eb663c7f501b3aa8e",
+    "source_path": "tests/test_data/forecasting/0.csv",
+    "source_repo": "https://github.com/argoverse/argoverse-api"
+  },
+  {
+    "description": "Argoverse forecasting sample trajectory for AGENT.",
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/argoverse_sample_agent.csv",
+    "kind": "trajectory",
+    "name": "argoverse_sample_agent",
+    "points": 2,
+    "schema": "xy_trajectory_v1",
+    "source_commit": "f886ac54fba9f06f8a7d109eb663c7f501b3aa8e",
+    "source_path": "tests/test_data/forecasting/0.csv",
+    "source_repo": "https://github.com/argoverse/argoverse-api"
+  },
+  {
+    "description": "Loop reference reconstructed from the public trajectory_test defaults in data_driven_mpc.",
+    "domain": "robotics",
+    "file": "assets/reference/robotics/data_driven_mpc_loop.csv",
+    "kind": "reference_trajectory",
+    "name": "data_driven_mpc_loop",
+    "points": 500,
+    "schema": "xyz_reference_kinematics_v1",
+    "source_commit": "a6be5d301e66d91a823ef68a29c79ccc5829f1b9",
+    "source_path": "ros_gp_mpc/src/experiments/trajectory_test.py + ros_gp_mpc/src/utils/trajectories.py",
+    "source_repo": "https://github.com/uzh-rpg/data_driven_mpc"
+  },
+  {
+    "description": "Lemniscate reference reconstructed from the public trajectory_test defaults in data_driven_mpc.",
+    "domain": "robotics",
+    "file": "assets/reference/robotics/data_driven_mpc_lemniscate.csv",
+    "kind": "reference_trajectory",
+    "name": "data_driven_mpc_lemniscate",
+    "points": 500,
+    "schema": "xyz_reference_kinematics_v1",
+    "source_commit": "a6be5d301e66d91a823ef68a29c79ccc5829f1b9",
+    "source_path": "ros_gp_mpc/src/experiments/trajectory_test.py + ros_gp_mpc/src/utils/trajectories.py",
+    "source_repo": "https://github.com/uzh-rpg/data_driven_mpc"
+  }
+]

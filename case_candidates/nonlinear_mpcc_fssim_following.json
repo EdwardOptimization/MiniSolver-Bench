@@ -1,0 +1,21 @@
+{
+  "name": "nonlinear_mpcc_fssim_following",
+  "domain": "autonomous_driving",
+  "asset": "assets/reference/driving/nonlinear_mpcc_fssim.csv",
+  "asset_schema": "driving_track_center_widths_v1",
+  "source_family": "nonlinear_mpcc",
+  "model_family": "kinematic_bicycle_track_following",
+  "task": "closed_track_following",
+  "dt": 0.05,
+  "horizon": 60,
+  "closed_loop_steps": 1200,
+  "target_speed_mps": 8.0,
+  "metrics": [
+    "solve_time_ms",
+    "success_rate",
+    "lap_progress",
+    "avg_contouring_error",
+    "max_constraint_violation"
+  ],
+  "notes": "Longer and wider racing track. Better stress test for scaling and long closed-loop runs."
+}

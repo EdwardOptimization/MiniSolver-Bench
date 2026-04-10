@@ -1,0 +1,12 @@
+{
+  "description": "ETH MPCC closed track with centerline and inner/outer boundaries.",
+  "domain": "autonomous_driving",
+  "file": "assets/reference/driving/mpcc_track.csv",
+  "kind": "closed_track",
+  "name": "mpcc_track",
+  "points": 489,
+  "schema": "driving_track_center_bounds_v1",
+  "source_commit": "bd331621ba47ae3326711922a863bdb1cdf2d2ea",
+  "source_path": "C++/Params/track.json",
+  "source_repo": "https://github.com/alexliniger/MPCC"
+}

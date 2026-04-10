@@ -1,0 +1,162 @@
+[
+  {
+    "bbox_x": [
+      -0.925,
+      1.605
+    ],
+    "bbox_y": [
+      -1.62,
+      1.46
+    ],
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/mpcc_track.csv",
+    "kind": "closed_track",
+    "max_total_width": 0.37041421036931105,
+    "mean_total_width": 0.37000882393937906,
+    "min_total_width": 0.3699999297303487,
+    "name": "mpcc_track",
+    "points": 489,
+    "schema": "driving_track_center_bounds_v1",
+    "source_commit": "bd331621ba47ae3326711922a863bdb1cdf2d2ea",
+    "source_repo": "https://github.com/alexliniger/MPCC",
+    "track_length": 17.80038284805551
+  },
+  {
+    "bbox_x": [
+      -9.295593610815411,
+      12.668353856297804
+    ],
+    "bbox_y": [
+      -1.449214363600976,
+      6.331988175446316
+    ],
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/nonlinear_mpcc_porto.csv",
+    "kind": "closed_track",
+    "max_total_width": 5.050002291914089,
+    "mean_total_width": 3.041019674184372,
+    "min_total_width": 1.9175073689174453,
+    "name": "nonlinear_mpcc_porto",
+    "points": 525,
+    "schema": "driving_track_center_widths_v1",
+    "source_commit": "b4b39c1a87e9fed1d37944e97e7a147c70977d94",
+    "source_repo": "https://github.com/nirajbasnet/Nonlinear_MPCC_for_autonomous_racing",
+    "track_length": 56.20187526416195
+  },
+  {
+    "bbox_x": [
+      -24.160508761093414,
+      44.59355984162792
+    ],
+    "bbox_y": [
+      -72.2173100640112,
+      0.14400315131643723
+    ],
+    "domain": "autonomous_driving",
+    "file": "assets/reference/driving/nonlinear_mpcc_fssim.csv",
+    "kind": "closed_track",
+    "max_total_width": 5.1808323658059106,
+    "mean_total_width": 3.8859934968977914,
+    "min_total_width": 3.264478258163163,
+    "name": "nonlinear_mpcc_fssim",
+    "points": 1124,
+    "schema": "driving_track_center_widths_v1",
+    "source_commit": "b4b39c1a87e9fed1d37944e97e7a147c70977d94",
+    "source_repo": "https://github.com/nirajbasnet/Nonlinear_MPCC_for_autonomous_racing",
+    "track_length": 307.50725252277897
+  },
+  {
+    "bbox_x": [
+      5.0,
+      10.0
+    ],
+    "bbox_y": [
+      10.0,
+      10.0
+    ],
+    "domain": "autonomous_driving",
+    "duration": 1.0,
+    "file": "assets/reference/driving/argoverse_sample_av.csv",
+    "kind": "trajectory",
+    "name": "argoverse_sample_av",
+    "path_length": 5.0,
+    "points": 2,
+    "schema": "xy_trajectory_v1",
+    "source_commit": "f886ac54fba9f06f8a7d109eb663c7f501b3aa8e",
+    "source_repo": "https://github.com/argoverse/argoverse-api"
+  },
+  {
+    "bbox_x": [
+      10.0,
+      10.0
+    ],
+    "bbox_y": [
+      5.0,
+      10.0
+    ],
+    "domain": "autonomous_driving",
+    "duration": 1.0,
+    "file": "assets/reference/driving/argoverse_sample_agent.csv",
+    "kind": "trajectory",
+    "name": "argoverse_sample_agent",
+    "path_length": 5.0,
+    "points": 2,
+    "schema": "xy_trajectory_v1",
+    "source_commit": "f886ac54fba9f06f8a7d109eb663c7f501b3aa8e",
+    "source_repo": "https://github.com/argoverse/argoverse-api"
+  },
+  {
+    "bbox_x": [
+      -4.999985456224537,
+      4.99991758390127
+    ],
+    "bbox_y": [
+      -4.999909338326827,
+      5.0
+    ],
+    "bbox_z": [
+      1.0,
+      1.0
+    ],
+    "domain": "robotics",
+    "duration": 19.959999999999997,
+    "file": "assets/reference/robotics/data_driven_mpc_loop.csv",
+    "kind": "reference_trajectory",
+    "max_accel": 13.688960970172733,
+    "max_speed": 8.273134823257426,
+    "mean_speed": 4.021585418396492,
+    "name": "data_driven_mpc_loop",
+    "path_length": 80.42338668302298,
+    "points": 500,
+    "schema": "xyz_reference_kinematics_v1",
+    "source_commit": "a6be5d301e66d91a823ef68a29c79ccc5829f1b9",
+    "source_repo": "https://github.com/uzh-rpg/data_driven_mpc"
+  },
+  {
+    "bbox_x": [
+      -4.999909338326827,
+      5.0
+    ],
+    "bbox_y": [
+      -2.4999847774840656,
+      2.4998885246907268
+    ],
+    "bbox_z": [
+      1.0,
+      1.0
+    ],
+    "domain": "robotics",
+    "duration": 19.959999999999997,
+    "file": "assets/reference/robotics/data_driven_mpc_lemniscate.csv",
+    "kind": "reference_trajectory",
+    "max_accel": 28.78169072419791,
+    "max_speed": 11.688056333372089,
+    "mean_speed": 3.8990580137351296,
+    "name": "data_driven_mpc_lemniscate",
+    "path_length": 77.96302033545375,
+    "points": 500,
+    "schema": "xyz_reference_kinematics_v1",
+    "source_commit": "a6be5d301e66d91a823ef68a29c79ccc5829f1b9",
+    "source_repo": "https://github.com/uzh-rpg/data_driven_mpc"
+  }
+]

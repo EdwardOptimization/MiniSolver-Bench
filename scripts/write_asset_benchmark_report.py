@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SUMMARY_JSON = ROOT / "results" / "summary.json"
+CASE_CANDIDATE_DIR = ROOT / "case_candidates"
+REPORT_MD = ROOT / "results" / "asset_benchmark_report.md"
+
+
+def load_records() -> list[dict]:
+    return json.loads(SUMMARY_JSON.read_text(encoding="utf-8"))
+
+
+def load_candidate_names() -> list[str]:
+    names = []
+    for path in sorted(CASE_CANDIDATE_DIR.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        names.append(data["name"])
+    return names
+
+
+def load_candidate_specs() -> dict[str, dict]:
+    specs: dict[str, dict] = {}
+    for path in sorted(CASE_CANDIDATE_DIR.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        specs[data["name"]] = data
+    return specs
+
+
+def fmt(value: object | None, digits: int = 6) -> str:
+    if value is None:
+        return "-"
+    return f"{float(value):.{digits}g}"
+
+
+def lookup(records: list[dict]) -> dict[tuple[str, str], dict]:
+    out: dict[tuple[str, str], dict] = {}
+    for record in records:
+        out[(record["backend"], record["case_name"])] = record
+    return out
+
+
+def render_rows(case_names: list[str], by_key: dict[tuple[str, str], dict]) -> list[str]:
+    backend_order = ("minisolver", "acados", "casadi")
+    rows: list[str] = []
+    for case in case_names:
+        for backend in backend_order:
+            record = by_key.get((backend, case))
+            if record is None:
+                rows.append(f"| `{case}` | `{backend}` | - | - | - | - | - | - | - |")
+                continue
+            rows.append(
+                "| `{case}` | `{backend}` | {steps} | {success} | {median} | {p95} | {maxv} | {avg_track} | {max_viol} |".format(
+                    case=case,
+                    backend=backend,
+                    steps=record["steps"],
+                    success=fmt(record.get("success_rate"), 3),
+                    median=fmt(record.get("median_ms")),
+                    p95=fmt(record.get("p95_ms")),
+                    maxv=fmt(record.get("max_ms")),
+                    avg_track=fmt(record.get("avg_tracking_error")),
+                    max_viol=fmt(record.get("max_constraint_violation")),
+                )
+            )
+    return rows
+
+
+def main() -> int:
+    records = load_records()
+    candidate_specs = load_candidate_specs()
+    candidate_names = set(candidate_specs)
+    filtered = [r for r in records if r["case_name"] in candidate_names]
+    by_key = lookup(filtered)
+
+    stable_cases = [
+        name for name, spec in sorted(candidate_specs.items())
+        if name != "mpcc_track_following"
+    ]
+    stress_cases = [name for name in sorted(candidate_specs) if name == "mpcc_track_following"]
+
+    lines = [
+        "# Asset Benchmark Report",
+        "",
+        "Cross-solver benchmark results for public-asset-derived case candidates.",
+        "",
+        "## Stable Cases",
+        "",
+        "These are the 4 cases that currently behave like usable benchmark baselines.",
+        "",
+        "| Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        *render_rows(stable_cases, by_key),
+        "",
+        "## Stress Case",
+        "",
+        "`mpcc_track_following` is kept separate because it is still a stress case, not a stable baseline.",
+        "",
+        "| Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        *render_rows(stress_cases, by_key),
+        "",
+        "## Notes",
+        "",
+        "- `MiniSolver` asset benchmarks use MiniSolver Python model generation plus native C++ solve runners.",
+        "- `acados` asset benchmarks use Python export/codegen and compiled C closed-loop runners. Python export time is excluded.",
+        "- `CasADi` asset benchmarks use native C++ runners with `nlpsol('sqpmethod')`; one-time graph construction is excluded from the per-step timing.",
+        "- The two robotics cases are the cleanest current baselines. MiniSolver and acados are in the same sub-millisecond class there; CasADi is about two orders slower.",
+        "- `nonlinear_mpcc_porto_following` and `nonlinear_mpcc_fssim_following` are currently the best driving baselines. acados is much faster there; MiniSolver is competitive on success rate; CasADi is much slower with heavy tail latency.",
+        "- `mpcc_track_following` should not be used for headline conclusions yet. It is still exposing model/setup mismatch rather than a stable solver ranking.",
+        "",
+        "## Files",
+        "",
+        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/casadi/`",
+        "- Aggregate CSV: `results/summary.csv`",
+        "- Aggregate JSON: `results/summary.json`",
+    ]
+
+    REPORT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {REPORT_MD}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
