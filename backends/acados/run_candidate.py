@@ -212,8 +212,9 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps = 1
-    ocp.solver_options.nlp_solver_type = "SQP"
-    ocp.solver_options.nlp_solver_max_iter = 20
+    # Fastest closed-loop mode in acados is RTI (one SQP iteration split into preparation + feedback).
+    # This matches the intended deployment pattern for embedded NMPC.
+    ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.tol = 1e-4
     ocp.solver_options.qp_tol = 1e-4
 

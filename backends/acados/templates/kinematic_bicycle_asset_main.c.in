@@ -434,6 +434,7 @@ int main(int argc, char **argv)
     ocp_nlp_in *nlp_in = @MODEL_NAME@_acados_get_nlp_in(solver_capsule);
     ocp_nlp_out *nlp_out = @MODEL_NAME@_acados_get_nlp_out(solver_capsule);
     ocp_nlp_solver *nlp_solver = @MODEL_NAME@_acados_get_nlp_solver(solver_capsule);
+    void *nlp_opts = @MODEL_NAME@_acados_get_nlp_opts(solver_capsule);
 
     const double dt = @DT@;
     const double wheelbase = 0.33;
@@ -478,10 +479,25 @@ int main(int argc, char **argv)
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
 
-        const double start_ms = monotonic_time_ms();
-        int status = @MODEL_NAME@_acados_solve(solver_capsule);
-        const double elapsed_ms = monotonic_time_ms() - start_ms;
+        int status = 0;
         int sqp_iter = 0;
+
+        int rti_phase = 1;
+        ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "rti_phase", &rti_phase);
+        const double start_ms = monotonic_time_ms();
+        int status_prep = @MODEL_NAME@_acados_solve(solver_capsule);
+        const double mid_ms = monotonic_time_ms();
+        if (status_prep != 0) status = status_prep;
+
+        rti_phase = 2;
+        ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "rti_phase", &rti_phase);
+        int status_fb = @MODEL_NAME@_acados_solve(solver_capsule);
+        const double end_ms = monotonic_time_ms();
+        if (status_fb != 0) status = status_fb;
+
+        const double prep_ms = mid_ms - start_ms;
+        const double feedback_ms = end_ms - mid_ms;
+        const double elapsed_ms = prep_ms + feedback_ms;
         ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
         double u0[NU];
