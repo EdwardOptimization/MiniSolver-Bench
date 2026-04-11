@@ -265,7 +265,8 @@ size_t nearest_cyclic_index(const DrivingTrackAsset& asset, double x, double y, 
 template <typename Model, int MAX_N>
 double max_positive_constraint(const MiniSolver<Model, MAX_N>& solver) {
     double result = 0.0;
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         for (int i = 0; i < Model::NC; ++i) {
             result = std::max(result, std::max(0.0, solver.get_constraint_val(k, i)));
         }
@@ -275,6 +276,28 @@ double max_positive_constraint(const MiniSolver<Model, MAX_N>& solver) {
 
 bool success_status(SolverStatus status) {
     return status == SolverStatus::OPTIMAL || status == SolverStatus::FEASIBLE;
+}
+
+template <typename Model, int MAX_N>
+void shift_primal_guess(MiniSolver<Model, MAX_N>& solver) {
+    const int N = solver.get_horizon();
+    if (N <= 0) {
+        return;
+    }
+
+    for (int k = 0; k < N; ++k) {
+        for (int i = 0; i < Model::NX; ++i) {
+            solver.set_state_guess(k, i, solver.get_state(k + 1, i));
+        }
+    }
+    for (int k = 0; k < N - 1; ++k) {
+        for (int i = 0; i < Model::NU; ++i) {
+            solver.set_control_guess(k, i, solver.get_control(k + 1, i));
+        }
+    }
+    for (int i = 0; i < Model::NU; ++i) {
+        solver.set_control_guess(N - 1, i, solver.get_control(N - 1, i));
+    }
 }
 
 struct DrivingTrackModel {
@@ -641,7 +664,8 @@ RobotState simulate_robot(const RobotState& state, double ax, double ay, double 
 }
 
 void seed_driving_solver(MiniSolver<DrivingTrackModel, kMaxHorizon>& solver, const DrivingTrackAsset& asset, size_t ref_idx, size_t stride, double target_speed) {
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         const size_t idx = (ref_idx + static_cast<size_t>(k) * stride) % asset.x.size();
         solver.set_parameter(k, 0, asset.x[idx]);
         solver.set_parameter(k, 1, asset.y[idx]);
@@ -656,7 +680,7 @@ void seed_driving_solver(MiniSolver<DrivingTrackModel, kMaxHorizon>& solver, con
         solver.set_state_guess(k, 2, asset.psi[idx]);
         solver.set_state_guess(k, 3, target_speed);
         solver.set_state_guess(k, 4, 0.0);
-        if (k < solver.N) {
+        if (k < N) {
             solver.set_control_guess(k, 0, 0.0);
             solver.set_control_guess(k, 1, 0.0);
         }
@@ -664,7 +688,8 @@ void seed_driving_solver(MiniSolver<DrivingTrackModel, kMaxHorizon>& solver, con
 }
 
 void update_driving_parameters(MiniSolver<DrivingTrackModel, kMaxHorizon>& solver, const DrivingTrackAsset& asset, size_t ref_idx, size_t stride, double target_speed) {
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         const size_t idx = (ref_idx + static_cast<size_t>(k) * stride) % asset.x.size();
         solver.set_parameter(k, 0, asset.x[idx]);
         solver.set_parameter(k, 1, asset.y[idx]);
@@ -678,7 +703,8 @@ void update_driving_parameters(MiniSolver<DrivingTrackModel, kMaxHorizon>& solve
 }
 
 void seed_robot_solver(MiniSolver<RobotReferenceModel, kMaxHorizon>& solver, const RobotReferenceAsset& asset, size_t ref_idx) {
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         const size_t idx = std::min(ref_idx + static_cast<size_t>(k), asset.x.size() - 1);
         solver.set_parameter(k, 0, asset.x[idx]);
         solver.set_parameter(k, 1, asset.y[idx]);
@@ -692,7 +718,7 @@ void seed_robot_solver(MiniSolver<RobotReferenceModel, kMaxHorizon>& solver, con
         solver.set_state_guess(k, 3, asset.vx[idx]);
         solver.set_state_guess(k, 4, asset.vy[idx]);
         solver.set_state_guess(k, 5, asset.vz[idx]);
-        if (k < solver.N) {
+        if (k < N) {
             solver.set_control_guess(k, 0, 0.0);
             solver.set_control_guess(k, 1, 0.0);
             solver.set_control_guess(k, 2, 0.0);
@@ -701,7 +727,8 @@ void seed_robot_solver(MiniSolver<RobotReferenceModel, kMaxHorizon>& solver, con
 }
 
 void update_robot_parameters(MiniSolver<RobotReferenceModel, kMaxHorizon>& solver, const RobotReferenceAsset& asset, size_t ref_idx) {
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         const size_t idx = std::min(ref_idx + static_cast<size_t>(k), asset.x.size() - 1);
         solver.set_parameter(k, 0, asset.x[idx]);
         solver.set_parameter(k, 1, asset.y[idx]);
@@ -730,8 +757,7 @@ int run_driving_benchmark(const Args& args) {
 
     for (int step = 0; step < args.steps; ++step) {
         if (step > 0) {
-            solver.shift_trajectory();
-            solver.is_warm_started = true;
+            shift_primal_guess(solver);
         }
 
         update_driving_parameters(solver, asset, ref_idx, stride, args.target_speed);
@@ -746,7 +772,7 @@ int run_driving_benchmark(const Args& args) {
         const double max_viol = max_positive_constraint(solver);
         out << step << ','
             << status_to_string(status) << ','
-            << solver.current_iter << ','
+            << solver.get_iteration_count() << ','
             << std::setprecision(17) << time_ms << ','
             << current.x << ','
             << current.y << ','
@@ -785,8 +811,7 @@ int run_robotics_benchmark(const Args& args) {
 
     for (int step = 0; step < steps; ++step) {
         if (step > 0) {
-            solver.shift_trajectory();
-            solver.is_warm_started = true;
+            shift_primal_guess(solver);
         }
 
         const size_t ref_idx = static_cast<size_t>(step);
@@ -805,7 +830,7 @@ int run_robotics_benchmark(const Args& args) {
         const double max_viol = max_positive_constraint(solver);
         out << step << ','
             << status_to_string(status) << ','
-            << solver.current_iter << ','
+            << solver.get_iteration_count() << ','
             << std::setprecision(17) << time_ms << ','
             << current.x << ','
             << current.y << ','

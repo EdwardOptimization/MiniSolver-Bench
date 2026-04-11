@@ -172,9 +172,9 @@ bool success_status(SolverStatus status) {
 template <typename Model, int MAX_N>
 double total_cost(const MiniSolver<Model, MAX_N>& solver) {
     double result = 0.0;
-    const auto& traj = solver.trajectory.active();
-    for (int k = 0; k <= solver.N; ++k) {
-        result += traj[k].cost;
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
+        result += solver.get_stage_cost(k);
     }
     return result;
 }
@@ -182,13 +182,35 @@ double total_cost(const MiniSolver<Model, MAX_N>& solver) {
 template <typename Model, int MAX_N>
 double max_positive_constraint(const MiniSolver<Model, MAX_N>& solver) {
     double result = 0.0;
-    const auto& traj = solver.trajectory.active();
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         for (int i = 0; i < Model::NC; ++i) {
-            result = std::max(result, std::max(0.0, traj[k].g_val(i)));
+            result = std::max(result, std::max(0.0, solver.get_constraint_val(k, i)));
         }
     }
     return result;
+}
+
+template <typename Model, int MAX_N>
+void shift_primal_guess(MiniSolver<Model, MAX_N>& solver) {
+    const int N = solver.get_horizon();
+    if (N <= 0) {
+        return;
+    }
+
+    for (int k = 0; k < N; ++k) {
+        for (int i = 0; i < Model::NX; ++i) {
+            solver.set_state_guess(k, i, solver.get_state(k + 1, i));
+        }
+    }
+    for (int k = 0; k < N - 1; ++k) {
+        for (int i = 0; i < Model::NU; ++i) {
+            solver.set_control_guess(k, i, solver.get_control(k + 1, i));
+        }
+    }
+    for (int i = 0; i < Model::NU; ++i) {
+        solver.set_control_guess(N - 1, i, solver.get_control(N - 1, i));
+    }
 }
 
 SolverConfig make_solver_config() {
@@ -1102,7 +1124,8 @@ void initialize_pendulum_solver(MiniSolver<PendulumModel, 80>& solver) {
     solver.set_initial_state("theta", M_PI);
     solver.set_initial_state("v", 0.0);
     solver.set_initial_state("omega", 0.0);
-    for (int k = 0; k < solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
         solver.set_control_guess(k, "force", 0.0);
     }
     solver.rollout_dynamics();
@@ -1115,7 +1138,7 @@ PendulumStep run_pendulum_step(MiniSolver<PendulumModel, 80>& solver, int step) 
     result.status = solver.solve();
     const auto end = std::chrono::steady_clock::now();
     result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-    result.iterations = solver.current_iter;
+    result.iterations = solver.get_iteration_count();
     result.force = solver.get_control(0, 0);
     result.state = to_array<4>(solver.get_state(0));
     result.total_cost_value = total_cost(solver);
@@ -1134,7 +1157,7 @@ std::vector<PendulumStep> run_pendulum_case(const Args& args) {
     initialize_pendulum_solver(warmup_solver);
     for (int i = 0; i < args.warmup_runs; ++i) {
         warmup_solver.solve();
-        warmup_solver.shift_trajectory();
+        shift_primal_guess(warmup_solver);
         warmup_solver.set_initial_state(std::vector<double>{0.0, M_PI, 0.0, 0.0});
         warmup_solver.reset(ResetOption::ALG_STATE);
     }
@@ -1162,7 +1185,7 @@ std::vector<PendulumStep> run_pendulum_case(const Args& args) {
             IntegratorType::RK4_EXPLICIT);
         current_state = to_array(next);
 
-        solver.shift_trajectory();
+        shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
         solver.reset(ResetOption::ALG_STATE);
     }
@@ -1254,28 +1277,30 @@ void set_race_cost_parameters(MiniSolver<RaceCarsModel, 80>& solver, double s0) 
     };
     const std::array<double, RaceCarsModel::NU> terminal_wu = {0.0, 0.0};
     const double sref = s0 + race_cars_sref_n;
+    const int N = solver.get_horizon();
 
-    for (int k = 0; k < solver.N; ++k) {
-        const double sref_k = s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(solver.N);
+    for (int k = 0; k < N; ++k) {
+        const double sref_k = s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(N);
         std::array<double, RaceCarsModel::NX> xref = {sref_k, 0.0, 0.0, 0.0, 0.0, 0.0};
         std::array<double, RaceCarsModel::NU> uref = {0.0, 0.0};
-        set_stage_array_parameters(solver, k, race_p_xref, xref);
-        set_stage_array_parameters(solver, k, race_p_uref, uref);
-        set_stage_array_parameters(solver, k, race_p_wx, stage_wx);
-        set_stage_array_parameters(solver, k, race_p_wu, stage_wu);
+        set_stage_array_parameters(solver, k, RaceCarsModel::P_XREF, xref);
+        set_stage_array_parameters(solver, k, RaceCarsModel::P_UREF, uref);
+        set_stage_array_parameters(solver, k, RaceCarsModel::P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, RaceCarsModel::P_WU, stage_wu);
     }
 
     std::array<double, RaceCarsModel::NX> xref_terminal = {sref, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::array<double, RaceCarsModel::NU> uref_terminal = {0.0, 0.0};
-    set_stage_array_parameters(solver, solver.N, race_p_xref, xref_terminal);
-    set_stage_array_parameters(solver, solver.N, race_p_uref, uref_terminal);
-    set_stage_array_parameters(solver, solver.N, race_p_wx, terminal_wx);
-    set_stage_array_parameters(solver, solver.N, race_p_wu, terminal_wu);
+    set_stage_array_parameters(solver, N, RaceCarsModel::P_XREF, xref_terminal);
+    set_stage_array_parameters(solver, N, RaceCarsModel::P_UREF, uref_terminal);
+    set_stage_array_parameters(solver, N, RaceCarsModel::P_WX, terminal_wx);
+    set_stage_array_parameters(solver, N, RaceCarsModel::P_WU, terminal_wu);
 }
 
 void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::array<double, 6>& x0) {
     solver.set_initial_state(std::vector<double>(x0.begin(), x0.end()));
-    for (int k = 0; k < solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
         solver.set_control_guess(k, 0, 0.0);
         solver.set_control_guess(k, 1, 0.0);
     }
@@ -1296,7 +1321,7 @@ std::vector<RaceStep> run_race_case(const Args& args) {
         set_race_cost_parameters(warmup_solver, warm_state[0]);
         warmup_solver.solve();
         warm_state = to_array<6>(warmup_solver.get_state(1));
-        warmup_solver.shift_trajectory();
+        shift_primal_guess(warmup_solver);
         warmup_solver.set_initial_state(std::vector<double>(warm_state.begin(), warm_state.end()));
         warmup_solver.reset(ResetOption::ALG_STATE);
     }
@@ -1317,7 +1342,7 @@ std::vector<RaceStep> run_race_case(const Args& args) {
         result.status = solver.solve();
         const auto end = std::chrono::steady_clock::now();
         result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-        result.iterations = solver.current_iter;
+        result.iterations = solver.get_iteration_count();
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
         result.s = solver.get_state(0, 0);
@@ -1325,7 +1350,7 @@ std::vector<RaceStep> run_race_case(const Args& args) {
         results.push_back(result);
 
         current_state = to_array<6>(solver.get_state(1));
-        solver.shift_trajectory();
+        shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
         solver.reset(ResetOption::ALG_STATE);
 
@@ -1425,9 +1450,10 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
     std::array<double, QuadrotorNavModel::NU> terminal_wu = {0.0, 0.0, 0.0, 0.0};
     const double sref = s0 + quadrotor_nav_s_ref;
     const double sref_dot = quadrotor_nav_s_ref / quadrotor_nav_tf;
-    for (int k = 0; k < solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
         const double sref_k =
-            s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(solver.N);
+            s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(N);
         std::array<double, QuadrotorNavModel::NX> xref = {
             sref_k, 0.0, 0.0,
             0.0, 0.0, 0.0, 0.0,
@@ -1437,14 +1463,14 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
             quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov,
         };
         std::array<double, QuadrotorNavModel::NU> uref = {0.0, 0.0, 0.0, 0.0};
-        set_stage_array_parameters(solver, k, quad_p_xref, xref);
-        set_stage_array_parameters(solver, k, quad_p_uref, uref);
-        set_stage_array_parameters(solver, k, quad_p_wx, stage_wx);
-        set_stage_array_parameters(solver, k, quad_p_wu, stage_wu);
+        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_XREF, xref);
+        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_UREF, uref);
+        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_WU, stage_wu);
     }
 
     const double terminal_sref =
-        s0 + (sref - s0) * static_cast<double>(solver.N - 1) / static_cast<double>(solver.N);
+        s0 + (sref - s0) * static_cast<double>(N - 1) / static_cast<double>(N);
     std::array<double, QuadrotorNavModel::NX> xref_terminal = {
         terminal_sref, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0,
@@ -1454,15 +1480,16 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
         quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov,
     };
     std::array<double, QuadrotorNavModel::NU> uref_terminal = {0.0, 0.0, 0.0, 0.0};
-    set_stage_array_parameters(solver, solver.N, quad_p_xref, xref_terminal);
-    set_stage_array_parameters(solver, solver.N, quad_p_uref, uref_terminal);
-    set_stage_array_parameters(solver, solver.N, quad_p_wx, terminal_wx);
-    set_stage_array_parameters(solver, solver.N, quad_p_wu, terminal_wu);
+    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_XREF, xref_terminal);
+    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_UREF, uref_terminal);
+    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_WX, terminal_wx);
+    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_WU, terminal_wu);
 }
 
 void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std::array<double, 20>& x0) {
     solver.set_initial_state(std::vector<double>(x0.begin(), x0.end()));
-    for (int k = 0; k < solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
         for (int j = 0; j < QuadrotorNavModel::NU; ++j) {
             solver.set_control_guess(k, j, 0.0);
         }
@@ -1492,7 +1519,7 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
             quadrotor_nav_tf / static_cast<double>(quadrotor_nav_horizon),
             IntegratorType::RK4_EXPLICIT);
         warm_state = to_array(next);
-        warmup_solver.shift_trajectory();
+        shift_primal_guess(warmup_solver);
         warmup_solver.set_initial_state(std::vector<double>(warm_state.begin(), warm_state.end()));
         warmup_solver.reset(ResetOption::ALG_STATE);
     }
@@ -1516,7 +1543,7 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
         result.status = solver.solve();
         const auto end = std::chrono::steady_clock::now();
         result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-        result.iterations = solver.current_iter;
+        result.iterations = solver.get_iteration_count();
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
 
@@ -1533,7 +1560,7 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
         result.abs_b = std::abs(current_state[2]);
         results.push_back(result);
 
-        solver.shift_trajectory();
+        shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
         solver.reset(ResetOption::ALG_STATE);
     }
@@ -1611,30 +1638,32 @@ void set_chain_cost_parameters(MiniSolver<ChainMassModel, 64>& solver) {
 
     std::array<double, ChainMassModel::NX> stage_wx{};
     stage_wx.fill(2.0);
-    const double strong_penalty = static_cast<double>(chain_mass_m + 1);
-    stage_wx[3 * chain_mass_m + 0] = 2.0 * strong_penalty;
-    stage_wx[3 * chain_mass_m + 1] = 2.0 * strong_penalty;
-    stage_wx[3 * chain_mass_m + 2] = 2.0 * strong_penalty;
+    const double strong_penalty = static_cast<double>(ChainMassModel::M + 1);
+    stage_wx[3 * ChainMassModel::M + 0] = 2.0 * strong_penalty;
+    stage_wx[3 * ChainMassModel::M + 1] = 2.0 * strong_penalty;
+    stage_wx[3 * ChainMassModel::M + 2] = 2.0 * strong_penalty;
     std::array<double, ChainMassModel::NU> stage_wu = {0.02, 0.02, 0.02};
     std::array<double, ChainMassModel::NU> terminal_wu = {0.0, 0.0, 0.0};
-    std::array<double, chain_mass_dist_dim> zero_dist{};
+    std::array<double, ChainMassModel::DIST_DIM> zero_dist{};
+    const int N = solver.get_horizon();
 
-    for (int k = 0; k < solver.N; ++k) {
-        set_stage_array_parameters(solver, k, chain_mass_p_dist, zero_dist);
-        set_stage_array_parameters(solver, k, chain_mass_p_xref, xref);
-        set_stage_array_parameters(solver, k, chain_mass_p_wx, stage_wx);
-        set_stage_array_parameters(solver, k, chain_mass_p_wu, stage_wu);
+    for (int k = 0; k < N; ++k) {
+        set_stage_array_parameters(solver, k, ChainMassModel::P_DIST, zero_dist);
+        set_stage_array_parameters(solver, k, ChainMassModel::P_XREF, xref);
+        set_stage_array_parameters(solver, k, ChainMassModel::P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, ChainMassModel::P_WU, stage_wu);
     }
 
-    set_stage_array_parameters(solver, solver.N, chain_mass_p_dist, zero_dist);
-    set_stage_array_parameters(solver, solver.N, chain_mass_p_xref, xref);
-    set_stage_array_parameters(solver, solver.N, chain_mass_p_wx, stage_wx);
-    set_stage_array_parameters(solver, solver.N, chain_mass_p_wu, terminal_wu);
+    set_stage_array_parameters(solver, N, ChainMassModel::P_DIST, zero_dist);
+    set_stage_array_parameters(solver, N, ChainMassModel::P_XREF, xref);
+    set_stage_array_parameters(solver, N, ChainMassModel::P_WX, stage_wx);
+    set_stage_array_parameters(solver, N, ChainMassModel::P_WU, terminal_wu);
 }
 
 void initialize_chain_solver(MiniSolver<ChainMassModel, 64>& solver, const std::array<double, ChainMassModel::NX>& x0) {
     solver.set_initial_state(std::vector<double>(x0.begin(), x0.end()));
-    for (int k = 0; k < solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
         for (int j = 0; j < ChainMassModel::NU; ++j) {
             solver.set_control_guess(k, j, 0.0);
         }
@@ -1663,7 +1692,7 @@ std::array<double, N> sample_uniform_ellipsoid(std::mt19937& rng, double scale) 
 
 double chain_wall_distance(const std::array<double, ChainMassModel::NX>& state) {
     double min_dist = std::numeric_limits<double>::infinity();
-    for (int i = 0; i < chain_mass_m; ++i) {
+    for (int i = 0; i <= ChainMassModel::M; ++i) {
         min_dist = std::min(min_dist, state[3 * i + 1] - chain_mass_y_pos_wall);
     }
     return min_dist;
@@ -1691,7 +1720,7 @@ std::vector<ChainStep> run_chain_case(const Args& args) {
     set_chain_cost_parameters(warmup_solver);
     for (int i = 0; i < args.warmup_runs; ++i) {
         warmup_solver.solve();
-        warmup_solver.shift_trajectory();
+        shift_primal_guess(warmup_solver);
         warmup_solver.set_initial_state(std::vector<double>(warm_state.begin(), warm_state.end()));
         warmup_solver.reset(ResetOption::ALG_STATE);
         set_chain_cost_parameters(warmup_solver);
@@ -1725,16 +1754,16 @@ std::vector<ChainStep> run_chain_case(const Args& args) {
         result.status = solver.solve();
         const auto end = std::chrono::steady_clock::now();
         result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-        result.iterations = solver.current_iter;
+        result.iterations = solver.get_iteration_count();
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
 
-        auto disturbance = sample_uniform_ellipsoid<chain_mass_dist_dim>(
+        auto disturbance = sample_uniform_ellipsoid<ChainMassModel::DIST_DIM>(
             rng,
             generated::chain_mass_perturb_scale);
         MSVec<double, ChainMassModel::NP> plant_p;
         plant_p.setZero();
-        for (int i = 0; i < chain_mass_dist_dim; ++i) {
+        for (int i = 0; i < ChainMassModel::DIST_DIM; ++i) {
             plant_p(i) = disturbance[static_cast<size_t>(i)];
         }
         const auto next = ChainMassModel::integrate(
@@ -1747,7 +1776,7 @@ std::vector<ChainStep> run_chain_case(const Args& args) {
         result.wall_dist = chain_wall_distance(current_state);
         results.push_back(result);
 
-        solver.shift_trajectory();
+        shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
         solver.reset(ResetOption::ALG_STATE);
     }
