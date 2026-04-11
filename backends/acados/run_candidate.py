@@ -154,10 +154,6 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
     model.con_h_expr = ca.vertcat(
         lateral - w_left,
         -lateral - w_right,
-        v - v_max,
-        v_min - v,
-        delta - delta_max,
-        delta_min - delta,
     )
     model.con_h_expr_e = model.con_h_expr
 
@@ -172,10 +168,43 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
     ocp.cost.yref = np.zeros((7,))
     ocp.cost.yref_e = np.zeros((5,))
     ocp.constraints.x0 = np.zeros((5,))
-    ocp.constraints.lh = -1e15 * np.ones((6,))
-    ocp.constraints.uh = np.zeros((6,))
-    ocp.constraints.lh_e = -1e15 * np.ones((6,))
-    ocp.constraints.uh_e = np.zeros((6,))
+    ocp.constraints.lbx = np.array([v_min, delta_min])
+    ocp.constraints.ubx = np.array([v_max, delta_max])
+    ocp.constraints.idxbx = np.array([3, 4], dtype=np.int64)
+    ocp.constraints.lbx_e = ocp.constraints.lbx.copy()
+    ocp.constraints.ubx_e = ocp.constraints.ubx.copy()
+    ocp.constraints.idxbx_e = ocp.constraints.idxbx.copy()
+
+    # Bounds on acceleration and steering rate to keep the closed-loop simulation well-posed and comparable
+    # across backends.
+    ocp.constraints.lbu = np.array([-15.0, -6.0])
+    ocp.constraints.ubu = np.array([15.0, 6.0])
+    ocp.constraints.idxbu = np.array([0, 1], dtype=np.int64)
+
+    ocp.constraints.lh = -1e6 * np.ones((2,))
+    ocp.constraints.uh = np.zeros((2,))
+    ocp.constraints.lh_e = -1e6 * np.ones((2,))
+    ocp.constraints.uh_e = np.zeros((2,))
+
+    # Soft slacks for the two lateral track corridor constraints.
+    # This mirrors common acados MPC practice (RTI + soft constraints) and avoids QP infeasibility
+    # from poor linearizations when starting far from the corridor.
+    nsh = 2
+    ocp.constraints.idxsh = np.array(range(nsh))
+    ocp.constraints.idxsh_e = np.array(range(nsh))
+    ocp.constraints.lsh = np.zeros(nsh)
+    ocp.constraints.ush = np.zeros(nsh)
+    ocp.constraints.lsh_e = np.zeros(nsh)
+    ocp.constraints.ush_e = np.zeros(nsh)
+    soft_w = 200.0
+    ocp.cost.zl = soft_w * np.ones((nsh,))
+    ocp.cost.zu = soft_w * np.ones((nsh,))
+    ocp.cost.Zl = np.zeros((nsh,))
+    ocp.cost.Zu = np.zeros((nsh,))
+    ocp.cost.zl_e = ocp.cost.zl.copy()
+    ocp.cost.zu_e = ocp.cost.zu.copy()
+    ocp.cost.Zl_e = ocp.cost.Zl.copy()
+    ocp.cost.Zu_e = ocp.cost.Zu.copy()
     ocp.solver_options.tf = horizon * dt
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.qp_solver_cond_N = horizon
@@ -266,8 +295,7 @@ def export_double_integrator_3d(candidate: dict, case_root: Path) -> dict:
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps = 1
-    ocp.solver_options.nlp_solver_type = "SQP"
-    ocp.solver_options.nlp_solver_max_iter = 20
+    ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.tol = 1e-4
     ocp.solver_options.qp_tol = 1e-4
 
@@ -346,9 +374,12 @@ def main() -> int:
     case_root.mkdir(parents=True, exist_ok=True)
     metadata_path = case_root / "metadata.json"
 
+    # The compiled runners link against shared libs in the acados repo; make sure the
+    # environment is configured even when skipping export/codegen.
+    configure_acados_python(args.acados_repo)
+
     if not args.skip_export:
         import_python_dependencies()
-        configure_acados_python(args.acados_repo)
         exporter = EXPORTERS.get(candidate["model_family"])
         if exporter is None:
             fail(f"unsupported model_family for acados asset backend: {candidate['model_family']}")

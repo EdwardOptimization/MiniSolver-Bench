@@ -12,11 +12,11 @@ struct KinematicBicycleTrackModel {
     // --- Constants ---
     static const int NX=5;
     static const int NU=2;
-    static const int NC=6;
+    static const int NC=10;
     static const int NP=8;
 
-    static constexpr std::array<double, NC> constraint_weights = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    static constexpr std::array<int, NC> constraint_types = {0, 0, 0, 0, 0, 0};
+    static constexpr std::array<double, NC> constraint_weights = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    static constexpr std::array<int, NC> constraint_types = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 
     // --- Name Arrays (for Map Construction) ---
@@ -320,6 +320,8 @@ struct KinematicBicycleTrackModel {
         T y = kp.x(1);
         T v = kp.x(3);
         T delta = kp.x(4);
+        T a = kp.u(0);
+        T delta_rate = kp.u(1);
         T x_ref = kp.p(0);
         T y_ref = kp.p(1);
         T n_x = kp.p(4);
@@ -338,6 +340,10 @@ struct KinematicBicycleTrackModel {
         kp.g_val(3,0) = 0.10000000000000001 - v;
         kp.g_val(4,0) = delta - 0.5;
         kp.g_val(5,0) = -delta - 0.5;
+        kp.g_val(6,0) = a - 15.0;
+        kp.g_val(7,0) = -a - 15.0;
+        kp.g_val(8,0) = delta_rate - 6.0;
+        kp.g_val(9,0) = -delta_rate - 6.0;
 
         // C
         kp.C(0,0) = n_x;
@@ -370,6 +376,26 @@ struct KinematicBicycleTrackModel {
         kp.C(5,2) = 0;
         kp.C(5,3) = 0;
         kp.C(5,4) = -1;
+        kp.C(6,0) = 0;
+        kp.C(6,1) = 0;
+        kp.C(6,2) = 0;
+        kp.C(6,3) = 0;
+        kp.C(6,4) = 0;
+        kp.C(7,0) = 0;
+        kp.C(7,1) = 0;
+        kp.C(7,2) = 0;
+        kp.C(7,3) = 0;
+        kp.C(7,4) = 0;
+        kp.C(8,0) = 0;
+        kp.C(8,1) = 0;
+        kp.C(8,2) = 0;
+        kp.C(8,3) = 0;
+        kp.C(8,4) = 0;
+        kp.C(9,0) = 0;
+        kp.C(9,1) = 0;
+        kp.C(9,2) = 0;
+        kp.C(9,3) = 0;
+        kp.C(9,4) = 0;
 
         // D
         kp.D(0,0) = 0;
@@ -384,6 +410,14 @@ struct KinematicBicycleTrackModel {
         kp.D(4,1) = 0;
         kp.D(5,0) = 0;
         kp.D(5,1) = 0;
+        kp.D(6,0) = 1;
+        kp.D(6,1) = 0;
+        kp.D(7,0) = -1;
+        kp.D(7,1) = 0;
+        kp.D(8,0) = 0;
+        kp.D(8,1) = 1;
+        kp.D(9,0) = 0;
+        kp.D(9,1) = -1;
 
     }
 

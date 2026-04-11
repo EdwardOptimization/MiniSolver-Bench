@@ -21,6 +21,8 @@ V_MIN = 0.1
 V_MAX = 12.0
 DELTA_MIN = -0.50
 DELTA_MAX = 0.50
+A_MAX = 15.0
+DELTA_RATE_MAX = 6.0
 
 
 if __name__ == "__main__":
@@ -61,6 +63,10 @@ if __name__ == "__main__":
     model.subject_to(V_MIN - v <= 0)
     model.subject_to(delta - DELTA_MAX <= 0)
     model.subject_to(DELTA_MIN - delta <= 0)
+    model.subject_to(accel - A_MAX <= 0)
+    model.subject_to(-A_MAX - accel <= 0)
+    model.subject_to(delta_rate - DELTA_RATE_MAX <= 0)
+    model.subject_to(-DELTA_RATE_MAX - delta_rate <= 0)
 
     output_dir = ROOT / "targets" / "minisolver" / "generated"
     model.generate(str(output_dir))

@@ -46,7 +46,7 @@ def build_static_problem(horizon: int, dt: float) -> tuple[sp.csc_matrix, sp.csc
     nx = 6
     nu = 3
     n_x = (horizon + 1) * nx
-    n_u = (horizon + 1) * nu
+    n_u = horizon * nu
     n = n_x + n_u
 
     q_state = np.diag([30.0, 30.0, 30.0, 5.0, 5.0, 5.0])
@@ -56,6 +56,7 @@ def build_static_problem(horizon: int, dt: float) -> tuple[sp.csc_matrix, sp.csc
     for k in range(horizon + 1):
         xi = xidx(k, nx)
         p_mat[xi : xi + nx, xi : xi + nx] += q_state
+    for k in range(horizon):
         ui = uidx(k, n_x, nu)
         p_mat[ui : ui + nu, ui : ui + nu] += r_control
     p_mat = sp.triu(p_mat.tocsc()).tocsc()
@@ -107,23 +108,12 @@ def build_static_problem(horizon: int, dt: float) -> tuple[sp.csc_matrix, sp.csc
             row_pos = sp.lil_matrix((1, n))
             row_pos[0, uidx(k, n_x, nu) + j] = 1.0
             g_rows.append(row_pos)
-            h_template.append(12.0)
+            h_template.append(15.0)
 
             row_neg = sp.lil_matrix((1, n))
             row_neg[0, uidx(k, n_x, nu) + j] = -1.0
             g_rows.append(row_neg)
-            h_template.append(12.0)
-
-    for j in range(nu):
-        row_pos = sp.lil_matrix((1, n))
-        row_pos[0, uidx(horizon, n_x, nu) + j] = 1.0
-        g_rows.append(row_pos)
-        h_template.append(0.0)
-
-        row_neg = sp.lil_matrix((1, n))
-        row_neg[0, uidx(horizon, n_x, nu) + j] = -1.0
-        g_rows.append(row_neg)
-        h_template.append(0.0)
+            h_template.append(15.0)
 
     g_mat = sp.vstack(g_rows).tocsc()
     a_mat = sp.vstack([aeq, g_mat]).tocsc()
@@ -243,12 +233,12 @@ def main() -> int:
             u0 = sol_x[uidx(0, n_x, nu) : uidx(0, n_x, nu) + nu]
             max_viol = max(
                 0.0,
-                float(u0[0] - 12.0),
-                float(-12.0 - u0[0]),
-                float(u0[1] - 12.0),
-                float(-12.0 - u0[1]),
-                float(u0[2] - 12.0),
-                float(-12.0 - u0[2]),
+                float(u0[0] - 15.0),
+                float(-15.0 - u0[0]),
+                float(u0[1] - 15.0),
+                float(-15.0 - u0[1]),
+                float(u0[2] - 15.0),
+                float(-15.0 - u0[2]),
             )
             writer.writerow(
                 [

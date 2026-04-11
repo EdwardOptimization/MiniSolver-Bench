@@ -8,21 +8,21 @@ These are the cases that currently behave like usable benchmark baselines under 
 
 | Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| `data_driven_mpc_lemniscate_tracking` | `minisolver` | 500 | 1 | 0.041193 | 0.0800572 | 0.125611 | 0.10448 | 0 |
-| `data_driven_mpc_lemniscate_tracking` | `acados` | 500 | 1 | 0.089954 | 0.139534 | 1.491 | 0.0951679 | 0 |
-| `data_driven_mpc_lemniscate_tracking` | `casadi` | 500 | 1 | 6.38007 | 9.8141 | 16.2217 | 0.10448 | 1.77636e-15 |
-| `data_driven_mpc_lemniscate_tracking` | `clarabel` | 500 | 1 | 0.333989 | 0.559852 | 0.655285 | 0.168999 | 0 |
-| `data_driven_mpc_loop_tracking` | `minisolver` | 500 | 1 | 0.031126 | 0.0434231 | 0.073778 | 0.0273859 | 0 |
-| `data_driven_mpc_loop_tracking` | `acados` | 500 | 1 | 0.090739 | 0.115713 | 0.290099 | 0.0214657 | 0 |
-| `data_driven_mpc_loop_tracking` | `casadi` | 500 | 1 | 6.33781 | 7.29299 | 8.09844 | 0.0273858 | 0 |
-| `data_driven_mpc_loop_tracking` | `clarabel` | 500 | 1 | 0.318799 | 0.560733 | 0.625605 | 0.0291629 | 0 |
-| `nonlinear_mpcc_fssim_following` | `minisolver` | 1200 | 1 | 0.090179 | 0.143948 | 0.853933 | 0.00106131 | 0 |
-| `nonlinear_mpcc_fssim_following` | `acados` | 1200 | 0.172 | 0.633175 | 0.916617 | 2.6332 | 25.765 | 49.713 |
-| `nonlinear_mpcc_fssim_following` | `casadi` | 1200 | 0.921 | 53.3818 | 4711.21 | 8008.45 | 797602 | 6.91704e+06 |
+| `data_driven_mpc_lemniscate_tracking` | `minisolver` | 500 | 1 | 0.0405095 | 0.0800385 | 0.11498 | 0.10448 | 0 |
+| `data_driven_mpc_lemniscate_tracking` | `acados` | 500 | 1 | 0.0663265 | 0.10931 | 1.44109 | 0.0951679 | 0 |
+| `data_driven_mpc_lemniscate_tracking` | `casadi` | 500 | 1 | 5.95695 | 7.11261 | 7.56597 | 0.10448 | 1.77636e-15 |
+| `data_driven_mpc_lemniscate_tracking` | `clarabel` | 500 | 1 | 0.333311 | 0.521438 | 0.625294 | 0.10448 | 0 |
+| `data_driven_mpc_loop_tracking` | `minisolver` | 500 | 1 | 0.040943 | 0.0433315 | 0.113808 | 0.0273859 | 0 |
+| `data_driven_mpc_loop_tracking` | `acados` | 500 | 1 | 0.0664009 | 0.0838342 | 0.155644 | 0.0214657 | 0 |
+| `data_driven_mpc_loop_tracking` | `casadi` | 500 | 1 | 5.94653 | 6.01878 | 7.59994 | 0.0273858 | 0 |
+| `data_driven_mpc_loop_tracking` | `clarabel` | 500 | 1 | 0.305645 | 0.393768 | 0.422171 | 0.0273858 | 0 |
+| `nonlinear_mpcc_fssim_following` | `minisolver` | 1200 | 1 | 0.110797 | 0.176224 | 1.82018 | 0.00106131 | 0 |
+| `nonlinear_mpcc_fssim_following` | `acados` | 1200 | 1 | 16.1368 | 20.6591 | 31.2649 | 0.922745 | 1.24072 |
+| `nonlinear_mpcc_fssim_following` | `casadi` | 1200 | 0.957 | 0.633244 | 270.268 | 4605.41 | 0.79742 | 0.036368 |
 | `nonlinear_mpcc_fssim_following` | `clarabel` | - | - | - | - | - | - | - |
-| `nonlinear_mpcc_porto_following` | `minisolver` | 600 | 1 | 0.076063 | 0.0839592 | 1.02719 | 0.00208937 | 0 |
-| `nonlinear_mpcc_porto_following` | `acados` | 600 | 0.03 | 0.683246 | 5.18267 | 7.34456 | 11.4278 | 20.7884 |
-| `nonlinear_mpcc_porto_following` | `casadi` | 600 | 0.97 | 0.485091 | 200.965 | 6913.27 | 2.50103e+07 | 3.13215e+07 |
+| `nonlinear_mpcc_porto_following` | `minisolver` | 600 | 1 | 0.120912 | 0.13855 | 2.19795 | 0.00208937 | 0 |
+| `nonlinear_mpcc_porto_following` | `acados` | 600 | 1 | 12.657 | 16.8767 | 20.6429 | 0.93247 | 0.882492 |
+| `nonlinear_mpcc_porto_following` | `casadi` | 600 | 0.687 | 0.743712 | 3210.68 | 6476.75 | 2.64836 | 11.6788 |
 | `nonlinear_mpcc_porto_following` | `clarabel` | - | - | - | - | - | - | - |
 
 ## Stress Case
@@ -31,9 +31,9 @@ These are the cases that currently behave like usable benchmark baselines under 
 
 | Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| `mpcc_track_following` | `minisolver` | 400 | 0.0225 | 0.516871 | 3.92812 | 6.22722 | 1.29962 | 6.08021 |
-| `mpcc_track_following` | `acados` | 400 | 0 | 0.584725 | 0.641001 | 0.98426 | 23.0953 | 47.6196 |
-| `mpcc_track_following` | `casadi` | - | - | - | - | - | - | - |
+| `mpcc_track_following` | `minisolver` | 400 | 0 | 2.07887 | 3.22457 | 4.07099 | 23.3636 | 45.1929 |
+| `mpcc_track_following` | `acados` | 400 | 1 | 2.83894 | 9.77299 | 13.4063 | 0.595687 | 0.90939 |
+| `mpcc_track_following` | `casadi` | 400 | 0.25 | 912.077 | 3266.86 | 4679.27 | 1.52096 | 5.11075 |
 | `mpcc_track_following` | `clarabel` | - | - | - | - | - | - | - |
 
 ## Notes

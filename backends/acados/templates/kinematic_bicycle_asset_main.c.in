@@ -361,6 +361,38 @@ static void shift_warm_start(ocp_nlp_config *config, ocp_nlp_dims *dims,
     ocp_nlp_out_set(config, dims, out, in, N_HORIZON - 1, "u", u_end);
 }
 
+static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
+                       ocp_nlp_in *in, ocp_nlp_out *out,
+                       const driving_track_t *track,
+                       double ref_s, double target_speed, double dt,
+                       const double *xcurrent,
+                       const double *u_guess)
+{
+    double p_stage[NP];
+    double x_guess[NX];
+    for (int k = 0; k <= N_HORIZON; ++k)
+    {
+        stage_params(track, ref_s + (double) k * target_speed * dt, target_speed, p_stage);
+        if (k == 0 && xcurrent)
+        {
+            for (int i = 0; i < NX; ++i) x_guess[i] = xcurrent[i];
+        }
+        else
+        {
+            x_guess[0] = p_stage[0];
+            x_guess[1] = p_stage[1];
+            x_guess[2] = p_stage[2];
+            x_guess[3] = target_speed;
+            x_guess[4] = 0.0;
+        }
+        ocp_nlp_out_set(config, dims, out, in, k, "x", x_guess);
+        if (k < N_HORIZON)
+        {
+            ocp_nlp_out_set(config, dims, out, in, k, "u", (double *) u_guess);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *asset_path = NULL;
@@ -412,14 +444,6 @@ int main(int argc, char **argv)
     const int stride_hint = (int) fmax(1.0, llround(target_speed * dt / fmax(track.avg_ds, 1e-6)));
 
     double xcurrent[NX] = {track.x[0], track.y[0], track.psi[0], target_speed, 0.0};
-    double x_guess[NX] = {track.x[0], track.y[0], track.psi[0], target_speed, 0.0};
-    double u_guess[NU] = {0.0, 0.0};
-    for (int k = 0; k < N_HORIZON; ++k)
-    {
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "x", x_guess);
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "u", u_guess);
-    }
-    ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, N_HORIZON, "x", x_guess);
 
     FILE *csv = fopen(output_path, "w");
     if (!csv)
@@ -437,8 +461,13 @@ int main(int argc, char **argv)
     int ref_idx = 0;
     double ref_s = track.s[0];
     double last_applied_u[NU] = {0.0, 0.0};
+
+    seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, xcurrent, last_applied_u);
     for (int step = 0; step < steps; ++step)
     {
+        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, 0, "x", xcurrent);
+        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, 0, "u", last_applied_u);
+
         double p_stage[NP];
         for (int k = 0; k <= N_HORIZON; ++k)
         {
@@ -476,12 +505,24 @@ int main(int argc, char **argv)
                 step, status, elapsed_ms, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4],
                 tracking_error, max_viol, ref_idx);
 
-        if (status == 0)
+        if (status == 0) success++;
+
+        const double a_min = -15.0;
+        const double a_max = 15.0;
+        const double delta_rate_min = -6.0;
+        const double delta_rate_max = 6.0;
+        bool u_ok = isfinite(u0[0]) && isfinite(u0[1])
+            && u0[0] >= a_min && u0[0] <= a_max
+            && u0[1] >= delta_rate_min && u0[1] <= delta_rate_max;
+        if (u_ok)
         {
-            success++;
             last_applied_u[0] = u0[0];
             last_applied_u[1] = u0[1];
             shift_warm_start(nlp_config, nlp_dims, nlp_in, nlp_out);
+        }
+        else
+        {
+            seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, xcurrent, last_applied_u);
         }
         times[step] = elapsed_ms;
 
