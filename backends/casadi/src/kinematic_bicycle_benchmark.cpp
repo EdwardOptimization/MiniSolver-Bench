@@ -1,5 +1,6 @@
 #include <casadi/casadi.hpp>
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -219,9 +220,11 @@ int main(int argc, char** argv) {
 
         std::vector<double> current = {asset.x.front(), asset.y.front(), asset.psi.front(), args.target_speed, 0.0};
         size_t ref_idx = 0;
+        double ref_s = asset.s.front();
+        std::array<double, 2> last_applied_u{0.0, 0.0};
         std::vector<double> last_w(static_cast<size_t>((args.horizon + 1) * kNx + args.horizon * kNu + args.horizon * kNh), 0.0);
         for (int k = 0; k <= args.horizon; ++k) {
-            const auto pk = stage_params(asset, asset.s[ref_idx] + static_cast<double>(k) * args.target_speed * args.dt, args.target_speed);
+            const auto pk = stage_params(asset, ref_s + static_cast<double>(k) * args.target_speed * args.dt, args.target_speed);
             std::copy(pk.begin(), pk.begin() + 5, last_w.begin() + static_cast<size_t>(k * kNx));
         }
 
@@ -271,7 +274,7 @@ int main(int argc, char** argv) {
             params.reserve(static_cast<size_t>(kNx + (args.horizon + 1) * kNp));
             params.insert(params.end(), current.begin(), current.end());
             for (int k = 0; k <= args.horizon; ++k) {
-                const auto pk = stage_params(asset, asset.s[ref_idx] + static_cast<double>(k) * args.target_speed * args.dt, args.target_speed);
+                const auto pk = stage_params(asset, ref_s + static_cast<double>(k) * args.target_speed * args.dt, args.target_speed);
                 params.insert(params.end(), pk.begin(), pk.end());
             }
 
@@ -292,11 +295,15 @@ int main(int argc, char** argv) {
             times.push_back(time_ms);
 
             const std::vector<double> solution = std::vector<double>(static_cast<std::vector<double>>(sol.at("x")));
-            last_w = solution;
+            if (ok) {
+                last_w = solution;
+            }
             const int iterations = static_cast<int>(stats.at("iter_count"));
-            const std::vector<double> u0 = {solution[static_cast<size_t>(u_offset)], solution[static_cast<size_t>(u_offset + 1)]};
-            const double tracking_error = std::hypot(current[0] - asset.x[ref_idx], current[1] - asset.y[ref_idx]);
-            const auto pk0 = stage_params(asset, asset.s[ref_idx], args.target_speed);
+            const std::vector<double> u0 = ok
+                ? std::vector<double>{solution[static_cast<size_t>(u_offset)], solution[static_cast<size_t>(u_offset + 1)]}
+                : std::vector<double>{last_applied_u[0], last_applied_u[1]};
+            const auto pk0 = stage_params(asset, ref_s, args.target_speed);
+            const double tracking_error = std::hypot(current[0] - pk0[0], current[1] - pk0[1]);
             const double lateral = pk0[4] * (current[0] - pk0[0]) + pk0[5] * (current[1] - pk0[1]);
             const double max_viol = std::max({0.0, lateral - pk0[6], -lateral - pk0[7], current[3] - kVMax, kVMin - current[3], current[4] - kDeltaMax, kDeltaMin - current[4]});
 
@@ -304,8 +311,11 @@ int main(int argc, char** argv) {
                 << current[0] << ',' << current[1] << ',' << current[2] << ',' << current[3] << ',' << current[4] << ','
                 << tracking_error << ',' << max_viol << ',' << ref_idx << '\n';
 
-            current = simulate_step(current, u0[0], u0[1], args.dt);
-            ref_idx = nmpc_bench::nearest_cyclic_index(asset, current[0], current[1], ref_idx + stride_hint, 30 + 4 * stride_hint);
+            if (ok) last_applied_u = {u0[0], u0[1]};
+            current = simulate_step(current, last_applied_u[0], last_applied_u[1], args.dt);
+            ref_s += args.target_speed * args.dt;
+            const auto next_ref = nmpc_bench::sample_driving_track(asset, ref_s);
+            ref_idx = nmpc_bench::nearest_cyclic_index(asset, next_ref.x, next_ref.y, ref_idx + stride_hint, 30 + 4 * stride_hint);
         }
         std::cout << "steps=" << args.steps << " success=" << success
                   << " median_ms=" << percentile(times, 0.5)

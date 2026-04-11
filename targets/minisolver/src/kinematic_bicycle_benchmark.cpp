@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -90,8 +91,8 @@ DrivingState simulate(const DrivingState& state, double a, double delta_rate, do
 
 double current_step_constraint_violation(const DrivingState& current,
                                          const nmpc_bench::DrivingTrackAsset& asset,
-                                         size_t ref_idx) {
-    const auto sample = nmpc_bench::sample_driving_track(asset, asset.s[ref_idx]);
+                                         double ref_s) {
+    const auto sample = nmpc_bench::sample_driving_track(asset, ref_s);
     const double lateral = sample.nx * (current.x - sample.x) + sample.ny * (current.y - sample.y);
     return std::max({
         0.0,
@@ -190,6 +191,15 @@ void update_parameters(MiniSolver<KinematicBicycleTrackModel, kMaxHorizon>& solv
     }
 }
 
+void set_constant_control_guess(MiniSolver<KinematicBicycleTrackModel, kMaxHorizon>& solver,
+                                const std::array<double, 2>& u) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
+        solver.set_control_guess(k, 0, u[0]);
+        solver.set_control_guess(k, 1, u[1]);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -202,16 +212,19 @@ int main(int argc, char** argv) {
         solver.set_dt(args.dt);
         DrivingState current{asset.x.front(), asset.y.front(), asset.psi.front(), args.target_speed, 0.0};
         size_t ref_idx = 0;
+        double ref_s = asset.s.front();
+        std::array<double, 2> last_applied_u{0.0, 0.0};
+        bool prev_success = false;
 
         std::ofstream out(args.output_path);
         out << "step,status,iterations,time_ms,x,y,psi,v,delta,tracking_error,max_constraint_violation,ref_index\n";
 
-        seed_solver(solver, asset, asset.s[ref_idx], args.dt, args.target_speed);
+        seed_solver(solver, asset, ref_s, args.dt, args.target_speed);
         solver.set_initial_state({current.x, current.y, current.psi, current.v, current.delta});
         solver.rollout_dynamics();
 
         for (int step = 0; step < args.steps; ++step) {
-            if (step > 0) {
+            if (step > 0 && prev_success) {
                 shift_primal_guess(solver);
                 SolverConfig cfg = solver.get_config();
                 cfg.initialization = InitializationMode::REUSE_PRIMAL;
@@ -221,7 +234,10 @@ int main(int argc, char** argv) {
                 cfg.initialization = InitializationMode::COLD_START;
                 solver.set_config(cfg);
             }
-            update_parameters(solver, asset, asset.s[ref_idx], args.dt, args.target_speed);
+            update_parameters(solver, asset, ref_s, args.dt, args.target_speed);
+            if (!(step > 0 && prev_success)) {
+                set_constant_control_guess(solver, last_applied_u);
+            }
             solver.set_initial_state({current.x, current.y, current.psi, current.v, current.delta});
             solver.rollout_dynamics();
             solver.reset(ResetOption::ALG_STATE);
@@ -229,16 +245,24 @@ int main(int argc, char** argv) {
             const SolverStatus status = solver.solve();
             const auto end = std::chrono::steady_clock::now();
             const double time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-            const double tracking_error = std::hypot(current.x - asset.x[ref_idx], current.y - asset.y[ref_idx]);
-            const double max_viol = current_step_constraint_violation(current, asset, ref_idx);
+            const auto ref_sample = nmpc_bench::sample_driving_track(asset, ref_s);
+            const double tracking_error = std::hypot(current.x - ref_sample.x, current.y - ref_sample.y);
+            const double max_viol = current_step_constraint_violation(current, asset, ref_s);
             out << step << ',' << status_to_string(status) << ',' << solver.get_iteration_count() << ','
                 << std::setprecision(17) << time_ms << ',' << current.x << ',' << current.y << ','
                 << current.psi << ',' << current.v << ',' << current.delta << ',' << tracking_error << ','
                 << max_viol << ',' << ref_idx << '\n';
 
-            const auto u = solver.get_control(0);
-            current = simulate(current, u[0], u[1], args.dt);
-            ref_idx = nmpc_bench::nearest_cyclic_index(asset, current.x, current.y, ref_idx + stride_hint, 30 + 4 * stride_hint);
+            const bool solve_ok = (status == SolverStatus::OPTIMAL || status == SolverStatus::FEASIBLE);
+            if (solve_ok) {
+                const auto u = solver.get_control(0);
+                last_applied_u = {u[0], u[1]};
+            }
+            current = simulate(current, last_applied_u[0], last_applied_u[1], args.dt);
+            ref_s += args.target_speed * args.dt;
+            const auto next_ref_sample = nmpc_bench::sample_driving_track(asset, ref_s);
+            ref_idx = nmpc_bench::nearest_cyclic_index(asset, next_ref_sample.x, next_ref_sample.y, ref_idx + stride_hint, 30 + 4 * stride_hint);
+            prev_success = solve_ok;
         }
         std::cout << "wrote " << args.output_path << "\n";
         return 0;

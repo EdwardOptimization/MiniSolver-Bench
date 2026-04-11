@@ -1,6 +1,7 @@
 #include <casadi/casadi.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -195,6 +196,7 @@ int main(int argc, char** argv) {
         out << "step,status,time_ms,iterations,x,y,z,vx,vy,vz,tracking_error,max_constraint_violation\n";
         std::vector<double> times;
         int success = 0;
+        std::array<double, 3> last_applied_u{0.0, 0.0, 0.0};
         for (int step = 0; step < steps; ++step) {
             std::vector<double> params;
             params.reserve(static_cast<size_t>(kNx + (args.horizon + 1) * kNp));
@@ -220,9 +222,13 @@ int main(int argc, char** argv) {
             if (ok) success++;
             times.push_back(time_ms);
 
-            last_w = std::vector<double>(static_cast<std::vector<double>>(sol.at("x")));
+            if (ok) {
+                last_w = std::vector<double>(static_cast<std::vector<double>>(sol.at("x")));
+            }
             const int iterations = static_cast<int>(stats.at("iter_count"));
-            const std::vector<double> u0 = {last_w[static_cast<size_t>(u_offset)], last_w[static_cast<size_t>(u_offset + 1)], last_w[static_cast<size_t>(u_offset + 2)]};
+            const std::vector<double> u0 = ok
+                ? std::vector<double>{last_w[static_cast<size_t>(u_offset)], last_w[static_cast<size_t>(u_offset + 1)], last_w[static_cast<size_t>(u_offset + 2)]}
+                : std::vector<double>{last_applied_u[0], last_applied_u[1], last_applied_u[2]};
             const double dx = current[0] - asset.x[static_cast<size_t>(step)];
             const double dy = current[1] - asset.y[static_cast<size_t>(step)];
             const double dz = current[2] - asset.z[static_cast<size_t>(step)];
@@ -232,12 +238,15 @@ int main(int argc, char** argv) {
                 << current[0] << ',' << current[1] << ',' << current[2] << ',' << current[3] << ',' << current[4] << ',' << current[5]
                 << ',' << tracking_error << ',' << max_viol << '\n';
 
-            current[0] += current[3] * args.dt + 0.5 * u0[0] * args.dt * args.dt;
-            current[1] += current[4] * args.dt + 0.5 * u0[1] * args.dt * args.dt;
-            current[2] += current[5] * args.dt + 0.5 * u0[2] * args.dt * args.dt;
-            current[3] += u0[0] * args.dt;
-            current[4] += u0[1] * args.dt;
-            current[5] += u0[2] * args.dt;
+            if (ok) {
+                last_applied_u = {u0[0], u0[1], u0[2]};
+            }
+            current[0] += current[3] * args.dt + 0.5 * last_applied_u[0] * args.dt * args.dt;
+            current[1] += current[4] * args.dt + 0.5 * last_applied_u[1] * args.dt * args.dt;
+            current[2] += current[5] * args.dt + 0.5 * last_applied_u[2] * args.dt * args.dt;
+            current[3] += last_applied_u[0] * args.dt;
+            current[4] += last_applied_u[1] * args.dt;
+            current[5] += last_applied_u[2] * args.dt;
         }
         std::cout << "steps=" << steps << " success=" << success
                   << " median_ms=" << percentile(times, 0.5)

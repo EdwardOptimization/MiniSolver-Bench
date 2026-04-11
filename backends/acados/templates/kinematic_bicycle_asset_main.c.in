@@ -335,6 +335,32 @@ static void simulate_step(const double *state, double a, double delta_rate, doub
     if (next[4] > delta_max) next[4] = delta_max;
 }
 
+static void shift_warm_start(ocp_nlp_config *config, ocp_nlp_dims *dims,
+                             ocp_nlp_in *in, ocp_nlp_out *out)
+{
+    double x_end[NX];
+    double u_end[NU];
+    double x_buf[NX];
+    double u_buf[NU];
+
+    ocp_nlp_out_get(config, dims, out, N_HORIZON, "x", x_end);
+    ocp_nlp_out_get(config, dims, out, N_HORIZON - 1, "u", u_end);
+
+    for (int k = 0; k < N_HORIZON; ++k)
+    {
+        ocp_nlp_out_get(config, dims, out, k + 1, "x", x_buf);
+        ocp_nlp_out_set(config, dims, out, in, k, "x", x_buf);
+    }
+    ocp_nlp_out_set(config, dims, out, in, N_HORIZON, "x", x_end);
+
+    for (int k = 0; k < N_HORIZON - 1; ++k)
+    {
+        ocp_nlp_out_get(config, dims, out, k + 1, "u", u_buf);
+        ocp_nlp_out_set(config, dims, out, in, k, "u", u_buf);
+    }
+    ocp_nlp_out_set(config, dims, out, in, N_HORIZON - 1, "u", u_end);
+}
+
 int main(int argc, char **argv)
 {
     const char *asset_path = NULL;
@@ -409,12 +435,14 @@ int main(int argc, char **argv)
     double *times = (double *) calloc((size_t) steps, sizeof(double));
     int success = 0;
     int ref_idx = 0;
+    double ref_s = track.s[0];
+    double last_applied_u[NU] = {0.0, 0.0};
     for (int step = 0; step < steps; ++step)
     {
         double p_stage[NP];
         for (int k = 0; k <= N_HORIZON; ++k)
         {
-            stage_params(&track, track.s[ref_idx] + (double) k * target_speed * dt, target_speed, p_stage);
+            stage_params(&track, ref_s + (double) k * target_speed * dt, target_speed, p_stage);
             @MODEL_NAME@_acados_update_params(solver_capsule, k, p_stage, NP);
         }
 
@@ -430,7 +458,7 @@ int main(int argc, char **argv)
         double u0[NU];
         ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
 
-        stage_params(&track, track.s[ref_idx], target_speed, p_stage);
+        stage_params(&track, ref_s, target_speed, p_stage);
         const double lateral = p_stage[4] * (xcurrent[0] - p_stage[0]) + p_stage[5] * (xcurrent[1] - p_stage[1]);
         double max_viol = 0.0;
         const double cands[6] = {
@@ -448,13 +476,22 @@ int main(int argc, char **argv)
                 step, status, elapsed_ms, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4],
                 tracking_error, max_viol, ref_idx);
 
-        if (status == 0) success++;
+        if (status == 0)
+        {
+            success++;
+            last_applied_u[0] = u0[0];
+            last_applied_u[1] = u0[1];
+            shift_warm_start(nlp_config, nlp_dims, nlp_in, nlp_out);
+        }
         times[step] = elapsed_ms;
 
         double xnext[NX];
-        simulate_step(xcurrent, u0[0], u0[1], dt, wheelbase, v_min, v_max, delta_min, delta_max, xnext);
+        simulate_step(xcurrent, last_applied_u[0], last_applied_u[1], dt, wheelbase, v_min, v_max, delta_min, delta_max, xnext);
         for (int i = 0; i < NX; ++i) xcurrent[i] = xnext[i];
-        ref_idx = nearest_cyclic_index(&track, xcurrent[0], xcurrent[1], ref_idx + stride_hint, 30 + 4 * stride_hint);
+        ref_s += target_speed * dt;
+        double next_ref[7];
+        sample_track(&track, ref_s, next_ref);
+        ref_idx = nearest_cyclic_index(&track, next_ref[0], next_ref[1], ref_idx + stride_hint, 30 + 4 * stride_hint);
     }
     fclose(csv);
 

@@ -1,3 +1,4 @@
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -118,6 +119,16 @@ void update_parameters(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>&
     }
 }
 
+void set_constant_control_guess(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>& solver,
+                                const std::array<double, 3>& u) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
+        solver.set_control_guess(k, 0, u[0]);
+        solver.set_control_guess(k, 1, u[1]);
+        solver.set_control_guess(k, 2, u[2]);
+    }
+}
+
 double current_step_constraint_violation(const std::vector<double>& u0) {
     return std::max({
         0.0,
@@ -137,6 +148,8 @@ int main(int argc, char** argv) {
         solver.set_dt(args.dt);
 
         std::vector<double> current = {asset.x.front(), asset.y.front(), asset.z.front(), asset.vx.front(), asset.vy.front(), asset.vz.front()};
+        std::array<double, 3> last_applied_u{0.0, 0.0, 0.0};
+        bool prev_success = false;
         std::ofstream out(args.output_path);
         out << "step,status,iterations,time_ms,x,y,z,vx,vy,vz,tracking_error,max_constraint_violation\n";
 
@@ -146,7 +159,7 @@ int main(int argc, char** argv) {
 
         const int steps = std::min<int>(args.steps, static_cast<int>(asset.x.size()));
         for (int step = 0; step < steps; ++step) {
-            if (step > 0) {
+            if (step > 0 && prev_success) {
                 shift_primal_guess(solver);
                 SolverConfig cfg = solver.get_config();
                 cfg.initialization = InitializationMode::REUSE_PRIMAL;
@@ -157,6 +170,9 @@ int main(int argc, char** argv) {
                 solver.set_config(cfg);
             }
             update_parameters(solver, asset, static_cast<size_t>(step));
+            if (!(step > 0 && prev_success)) {
+                set_constant_control_guess(solver, last_applied_u);
+            }
             solver.set_initial_state(current);
             solver.rollout_dynamics();
             solver.reset(ResetOption::ALG_STATE);
@@ -175,12 +191,17 @@ int main(int argc, char** argv) {
                 << std::setprecision(17) << time_ms << ',' << current[0] << ',' << current[1] << ','
                 << current[2] << ',' << current[3] << ',' << current[4] << ',' << current[5] << ','
                 << tracking_error << ',' << max_viol << '\n';
-            current[0] += current[3] * args.dt + 0.5 * u[0] * args.dt * args.dt;
-            current[1] += current[4] * args.dt + 0.5 * u[1] * args.dt * args.dt;
-            current[2] += current[5] * args.dt + 0.5 * u[2] * args.dt * args.dt;
-            current[3] += u[0] * args.dt;
-            current[4] += u[1] * args.dt;
-            current[5] += u[2] * args.dt;
+            const bool solve_ok = (status == SolverStatus::OPTIMAL || status == SolverStatus::FEASIBLE);
+            if (solve_ok) {
+                last_applied_u = {u[0], u[1], u[2]};
+            }
+            current[0] += current[3] * args.dt + 0.5 * last_applied_u[0] * args.dt * args.dt;
+            current[1] += current[4] * args.dt + 0.5 * last_applied_u[1] * args.dt * args.dt;
+            current[2] += current[5] * args.dt + 0.5 * last_applied_u[2] * args.dt * args.dt;
+            current[3] += last_applied_u[0] * args.dt;
+            current[4] += last_applied_u[1] * args.dt;
+            current[5] += last_applied_u[2] * args.dt;
+            prev_success = solve_ok;
         }
         std::cout << "wrote " << args.output_path << "\n";
         return 0;

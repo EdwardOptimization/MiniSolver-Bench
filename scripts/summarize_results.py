@@ -33,6 +33,15 @@ def parse_float(row: dict[str, str], key: str) -> float | None:
     return float(value)
 
 
+def is_success_row(row: dict[str, str], backend: str) -> bool:
+    status = row.get("status")
+    if status is None:
+        return True
+    if backend == "minisolver":
+        return status in {"SOLVED", "OPTIMAL", "FEASIBLE"}
+    return status == "0"
+
+
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
@@ -68,37 +77,54 @@ def summarize_file(path: Path) -> dict[str, object] | None:
         "max_ms": max(times),
     }
 
+    success_rows = rows
     if "status" in rows[0]:
-        if source_backend == "minisolver":
-            success_statuses = {"SOLVED", "OPTIMAL", "FEASIBLE"}
-            success = sum(1 for row in rows if row["status"] in success_statuses)
-        else:
-            success = sum(1 for row in rows if row["status"] == "0")
+        success_rows = [row for row in rows if is_success_row(row, source_backend)]
+        success = len(success_rows)
         record["success_rate"] = success / len(rows)
 
     if "iterations" in rows[0]:
-        record["avg_iterations"] = sum(float(row["iterations"]) for row in rows) / len(rows)
+        iterations = [value for row in success_rows if (value := parse_float(row, "iterations")) is not None]
+        if iterations:
+            record["avg_iterations"] = sum(iterations) / len(iterations)
     if "sqp_iter" in rows[0]:
-        record["avg_iterations"] = sum(float(row["sqp_iter"]) for row in rows) / len(rows)
+        sqp_iters = [value for row in success_rows if (value := parse_float(row, "sqp_iter")) is not None]
+        if sqp_iters:
+            record["avg_iterations"] = sum(sqp_iters) / len(sqp_iters)
 
     if "max_constraint_violation" in rows[0]:
-        record["max_constraint_violation"] = max(float(row["max_constraint_violation"]) for row in rows)
+        violations = [value for row in rows if (value := parse_float(row, "max_constraint_violation")) is not None]
+        if violations:
+            record["max_constraint_violation"] = max(violations)
     if "pole_theta" in rows[0]:
-        record["final_theta_abs"] = abs(float(rows[-1]["pole_theta"]))
+        value = parse_float(rows[-1], "pole_theta")
+        if value is not None:
+            record["final_theta_abs"] = abs(value)
     if "theta" in rows[0]:
-        record["final_theta_abs"] = abs(float(rows[-1]["theta"]))
+        value = parse_float(rows[-1], "theta")
+        if value is not None:
+            record["final_theta_abs"] = abs(value)
     if "v" in rows[0]:
-        record["avg_speed"] = sum(float(row["v"]) for row in rows) / len(rows)
+        speeds = [value for row in rows if (value := parse_float(row, "v")) is not None]
+        if speeds:
+            record["avg_speed"] = sum(speeds) / len(speeds)
     if "abs_n" in rows[0]:
-        record["avg_abs_n"] = sum(float(row["abs_n"]) for row in rows) / len(rows)
+        abs_n = [value for row in rows if (value := parse_float(row, "abs_n")) is not None]
+        if abs_n:
+            record["avg_abs_n"] = sum(abs_n) / len(abs_n)
     if "abs_b" in rows[0]:
-        record["avg_abs_b"] = sum(float(row["abs_b"]) for row in rows) / len(rows)
+        abs_b = [value for row in rows if (value := parse_float(row, "abs_b")) is not None]
+        if abs_b:
+            record["avg_abs_b"] = sum(abs_b) / len(abs_b)
     if "wall_dist" in rows[0]:
-        record["min_wall_dist"] = min(float(row["wall_dist"]) for row in rows)
+        wall_dist = [value for row in rows if (value := parse_float(row, "wall_dist")) is not None]
+        if wall_dist:
+            record["min_wall_dist"] = min(wall_dist)
     if "tracking_error" in rows[0]:
-        tracking = [float(row["tracking_error"]) for row in rows]
-        record["avg_tracking_error"] = sum(tracking) / len(tracking)
-        record["final_tracking_error"] = tracking[-1]
+        tracking = [value for row in rows if (value := parse_float(row, "tracking_error")) is not None]
+        if tracking:
+            record["avg_tracking_error"] = sum(tracking) / len(tracking)
+            record["final_tracking_error"] = tracking[-1]
 
     return record
 

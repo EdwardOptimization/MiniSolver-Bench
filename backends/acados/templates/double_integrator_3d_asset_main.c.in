@@ -180,6 +180,32 @@ static void stage_params(const robot_reference_t *ref, int idx, double *p)
     p[5] = ref->vz[idx];
 }
 
+static void shift_warm_start(ocp_nlp_config *config, ocp_nlp_dims *dims,
+                             ocp_nlp_in *in, ocp_nlp_out *out)
+{
+    double x_end[NX];
+    double u_end[NU];
+    double x_buf[NX];
+    double u_buf[NU];
+
+    ocp_nlp_out_get(config, dims, out, N_HORIZON, "x", x_end);
+    ocp_nlp_out_get(config, dims, out, N_HORIZON - 1, "u", u_end);
+
+    for (int k = 0; k < N_HORIZON; ++k)
+    {
+        ocp_nlp_out_get(config, dims, out, k + 1, "x", x_buf);
+        ocp_nlp_out_set(config, dims, out, in, k, "x", x_buf);
+    }
+    ocp_nlp_out_set(config, dims, out, in, N_HORIZON, "x", x_end);
+
+    for (int k = 0; k < N_HORIZON - 1; ++k)
+    {
+        ocp_nlp_out_get(config, dims, out, k + 1, "u", u_buf);
+        ocp_nlp_out_set(config, dims, out, in, k, "u", u_buf);
+    }
+    ocp_nlp_out_set(config, dims, out, in, N_HORIZON - 1, "u", u_end);
+}
+
 int main(int argc, char **argv)
 {
     const char *asset_path = NULL;
@@ -245,6 +271,7 @@ int main(int argc, char **argv)
 
     double *times = (double *) calloc((size_t) steps, sizeof(double));
     int success = 0;
+    double last_applied_u[NU] = {0.0, 0.0, 0.0};
     for (int step = 0; step < steps; ++step)
     {
         double p_stage[NP];
@@ -281,15 +308,20 @@ int main(int argc, char **argv)
         fprintf(csv, "%d,%d,%.9f,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
                 step, status, elapsed_ms, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4], xcurrent[5],
                 tracking_error, max_viol);
-        if (status == 0) success++;
+        if (status == 0)
+        {
+            success++;
+            for (int i = 0; i < NU; ++i) last_applied_u[i] = u0[i];
+            shift_warm_start(nlp_config, nlp_dims, nlp_in, nlp_out);
+        }
         times[step] = elapsed_ms;
 
-        xcurrent[0] += xcurrent[3] * dt + 0.5 * u0[0] * dt * dt;
-        xcurrent[1] += xcurrent[4] * dt + 0.5 * u0[1] * dt * dt;
-        xcurrent[2] += xcurrent[5] * dt + 0.5 * u0[2] * dt * dt;
-        xcurrent[3] += u0[0] * dt;
-        xcurrent[4] += u0[1] * dt;
-        xcurrent[5] += u0[2] * dt;
+        xcurrent[0] += xcurrent[3] * dt + 0.5 * last_applied_u[0] * dt * dt;
+        xcurrent[1] += xcurrent[4] * dt + 0.5 * last_applied_u[1] * dt * dt;
+        xcurrent[2] += xcurrent[5] * dt + 0.5 * last_applied_u[2] * dt * dt;
+        xcurrent[3] += last_applied_u[0] * dt;
+        xcurrent[4] += last_applied_u[1] * dt;
+        xcurrent[5] += last_applied_u[2] * dt;
     }
     fclose(csv);
 
