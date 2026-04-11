@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import date
 from pathlib import Path
 
 
@@ -77,7 +78,11 @@ def render_summary_table(records: list[dict]) -> list[str]:
     }
     visible_backends = {"minisolver", "acados", "casadi"}
     ordered_records = sorted(
-        [record for record in records if record["backend"] in visible_backends],
+        [
+            record
+            for record in records
+            if record["backend"] in visible_backends and record["case_name"] in case_order
+        ],
         key=lambda record: (
             case_order.get(record["case_name"], 99),
             backend_order.get(record["backend"], 99),
@@ -165,7 +170,7 @@ def main() -> int:
     lines = [
         "# Latest Benchmark Report",
         "",
-        "Date: 2026-04-10",
+        f"Date: {date.today().isoformat()}",
         "",
         "## Provenance",
         "",
