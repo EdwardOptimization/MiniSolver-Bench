@@ -70,7 +70,8 @@ def summarize_file(path: Path) -> dict[str, object] | None:
 
     if "status" in rows[0]:
         if source_backend == "minisolver":
-            success = sum(1 for row in rows if row["status"] in {"OPTIMAL", "FEASIBLE"})
+            success_statuses = {"SOLVED", "OPTIMAL", "FEASIBLE"}
+            success = sum(1 for row in rows if row["status"] in success_statuses)
         else:
             success = sum(1 for row in rows if row["status"] == "0")
         record["success_rate"] = success / len(rows)

@@ -17,14 +17,23 @@ namespace {
 constexpr int kMaxHorizon = 128;
 
 template <typename Model, int MAX_N>
-double max_positive_constraint(const MiniSolver<Model, MAX_N>& solver) {
-    double result = 0.0;
-    for (int k = 0; k <= solver.N; ++k) {
-        for (int i = 0; i < Model::NC; ++i) {
-            result = std::max(result, std::max(0.0, solver.get_constraint_val(k, i)));
+void shift_primal_guess(MiniSolver<Model, MAX_N>& solver) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k < N; ++k) {
+        for (int i = 0; i < Model::NX; ++i) {
+            solver.set_state_guess(k, i, solver.get_state(k + 1, i));
         }
     }
-    return result;
+    for (int i = 0; i < Model::NX; ++i) {
+        solver.set_state_guess(N, i, solver.get_state(N, i));
+    }
+
+    for (int k = 0; k < N; ++k) {
+        const int src_k = std::min(k + 1, N - 1);
+        for (int i = 0; i < Model::NU; ++i) {
+            solver.set_control_guess(k, i, solver.get_control(src_k, i));
+        }
+    }
 }
 
 SolverConfig make_config() {
@@ -73,7 +82,8 @@ Args parse_args(int argc, char** argv) {
 }
 
 void seed_solver(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>& solver, const nmpc_bench::RobotReferenceAsset& asset, size_t ref_idx) {
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         const size_t idx = std::min(ref_idx + static_cast<size_t>(k), asset.x.size() - 1);
         solver.set_parameter(k, 0, asset.x[idx]);
         solver.set_parameter(k, 1, asset.y[idx]);
@@ -87,7 +97,7 @@ void seed_solver(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>& solve
         solver.set_state_guess(k, 3, asset.vx[idx]);
         solver.set_state_guess(k, 4, asset.vy[idx]);
         solver.set_state_guess(k, 5, asset.vz[idx]);
-        if (k < solver.N) {
+        if (k < N) {
             solver.set_control_guess(k, 0, 0.0);
             solver.set_control_guess(k, 1, 0.0);
             solver.set_control_guess(k, 2, 0.0);
@@ -96,7 +106,8 @@ void seed_solver(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>& solve
 }
 
 void update_parameters(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>& solver, const nmpc_bench::RobotReferenceAsset& asset, size_t ref_idx) {
-    for (int k = 0; k <= solver.N; ++k) {
+    const int N = solver.get_horizon();
+    for (int k = 0; k <= N; ++k) {
         const size_t idx = std::min(ref_idx + static_cast<size_t>(k), asset.x.size() - 1);
         solver.set_parameter(k, 0, asset.x[idx]);
         solver.set_parameter(k, 1, asset.y[idx]);
@@ -105,6 +116,15 @@ void update_parameters(MiniSolver<DoubleIntegrator3DTrackingModel, kMaxHorizon>&
         solver.set_parameter(k, 4, asset.vy[idx]);
         solver.set_parameter(k, 5, asset.vz[idx]);
     }
+}
+
+double current_step_constraint_violation(const std::vector<double>& u0) {
+    return std::max({
+        0.0,
+        u0[0] - 15.0, -15.0 - u0[0],
+        u0[1] - 15.0, -15.0 - u0[1],
+        u0[2] - 15.0, -15.0 - u0[2],
+    });
 }
 
 }  // namespace
@@ -127,11 +147,19 @@ int main(int argc, char** argv) {
         const int steps = std::min<int>(args.steps, static_cast<int>(asset.x.size()));
         for (int step = 0; step < steps; ++step) {
             if (step > 0) {
-                solver.shift_trajectory();
-                solver.is_warm_started = true;
+                shift_primal_guess(solver);
+                SolverConfig cfg = solver.get_config();
+                cfg.initialization = InitializationMode::REUSE_PRIMAL;
+                solver.set_config(cfg);
+            } else {
+                SolverConfig cfg = solver.get_config();
+                cfg.initialization = InitializationMode::COLD_START;
+                solver.set_config(cfg);
             }
             update_parameters(solver, asset, static_cast<size_t>(step));
             solver.set_initial_state(current);
+            solver.rollout_dynamics();
+            solver.reset(ResetOption::ALG_STATE);
             const auto start = std::chrono::steady_clock::now();
             const SolverStatus status = solver.solve();
             const auto end = std::chrono::steady_clock::now();
@@ -141,13 +169,12 @@ int main(int argc, char** argv) {
             const double dy = current[1] - asset.y[static_cast<size_t>(step)];
             const double dz = current[2] - asset.z[static_cast<size_t>(step)];
             const double tracking_error = std::sqrt(dx * dx + dy * dy + dz * dz);
-            const double max_viol = max_positive_constraint(solver);
-            out << step << ',' << status_to_string(status) << ',' << solver.current_iter << ','
+            const auto u = solver.get_control(0);
+            const double max_viol = current_step_constraint_violation(u);
+            out << step << ',' << status_to_string(status) << ',' << solver.get_iteration_count() << ','
                 << std::setprecision(17) << time_ms << ',' << current[0] << ',' << current[1] << ','
                 << current[2] << ',' << current[3] << ',' << current[4] << ',' << current[5] << ','
                 << tracking_error << ',' << max_viol << '\n';
-
-            const auto u = solver.get_control(0);
             current[0] += current[3] * args.dt + 0.5 * u[0] * args.dt * args.dt;
             current[1] += current[4] * args.dt + 0.5 * u[1] * args.dt * args.dt;
             current[2] += current[5] * args.dt + 0.5 * u[2] * args.dt * args.dt;

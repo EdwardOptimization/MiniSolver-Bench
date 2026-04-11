@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/types.h>
 
 #include "acados_c/ocp_nlp_interface.h"
@@ -69,6 +70,13 @@ static double wrap_angle(double angle)
     while (angle > M_PI) angle -= 2.0 * M_PI;
     while (angle < -M_PI) angle += 2.0 * M_PI;
     return angle;
+}
+
+static double monotonic_time_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double) ts.tv_sec * 1000.0 + (double) ts.tv_nsec / 1.0e6;
 }
 
 static void track_reserve(driving_track_t *track, int cap)
@@ -233,16 +241,98 @@ static int nearest_cyclic_index(const driving_track_t *track, double x, double y
     return best;
 }
 
-static void stage_params(const driving_track_t *track, int idx, double target_speed, double *p)
+static void sample_track(const driving_track_t *track, double s_query, double *out)
 {
-    p[0] = track->x[idx];
-    p[1] = track->y[idx];
-    p[2] = track->psi[idx];
+    const int n = track->count;
+    if (n <= 1)
+    {
+        out[0] = track->x[0];
+        out[1] = track->y[0];
+        out[2] = track->psi[0];
+        out[3] = track->nx[0];
+        out[4] = track->ny[0];
+        out[5] = track->w_left[0];
+        out[6] = track->w_right[0];
+        return;
+    }
+
+    const double seam_dx = track->x[0] - track->x[n - 1];
+    const double seam_dy = track->y[0] - track->y[n - 1];
+    const double seam_ds = hypot(seam_dx, seam_dy);
+    const double period = track->s[n - 1] + ((seam_ds > 1e-9) ? seam_ds : 0.0);
+    double s_wrapped = fmod(s_query, period);
+    if (s_wrapped < 0.0) s_wrapped += period;
+
+    int hi = 0;
+    while (hi < n && track->s[hi] <= s_wrapped) ++hi;
+    int lo = (hi == 0) ? (n - 1) : (hi - 1);
+    if (hi >= n) hi = 0;
+
+    const double s0 = track->s[lo];
+    const double s1 = (hi == 0) ? period : track->s[hi];
+    double alpha = 0.0;
+    if (s1 > s0 + 1e-12) alpha = (s_wrapped - s0) / (s1 - s0);
+    if (alpha < 0.0) alpha = 0.0;
+    if (alpha > 1.0) alpha = 1.0;
+
+    const double psi0 = track->psi[lo];
+    const double psi1 = track->psi[hi];
+    const double dpsi = wrap_angle(psi1 - psi0);
+    const double psi = wrap_angle(psi0 + alpha * dpsi);
+
+    out[0] = track->x[lo] * (1.0 - alpha) + track->x[hi] * alpha;
+    out[1] = track->y[lo] * (1.0 - alpha) + track->y[hi] * alpha;
+    out[2] = psi;
+    out[3] = -sin(psi);
+    out[4] = cos(psi);
+    out[5] = track->w_left[lo] * (1.0 - alpha) + track->w_left[hi] * alpha;
+    out[6] = track->w_right[lo] * (1.0 - alpha) + track->w_right[hi] * alpha;
+}
+
+static void stage_params(const driving_track_t *track, double ref_s, double target_speed, double *p)
+{
+    double sample[7];
+    sample_track(track, ref_s, sample);
+    p[0] = sample[0];
+    p[1] = sample[1];
+    p[2] = sample[2];
     p[3] = target_speed;
-    p[4] = track->nx[idx];
-    p[5] = track->ny[idx];
-    p[6] = track->w_left[idx];
-    p[7] = track->w_right[idx];
+    p[4] = sample[3];
+    p[5] = sample[4];
+    p[6] = sample[5];
+    p[7] = sample[6];
+}
+
+static void simulate_step(const double *state, double a, double delta_rate, double dt,
+                          double wheelbase, double v_min, double v_max, double delta_min, double delta_max,
+                          double *next)
+{
+    double k1[5], k2[5], k3[5], k4[5], tmp[5];
+    #define DERIV(src, out) \
+        do { \
+            (out)[0] = (src)[3] * cos((src)[2]); \
+            (out)[1] = (src)[3] * sin((src)[2]); \
+            (out)[2] = (src)[3] * tan((src)[4]) / wheelbase; \
+            (out)[3] = a; \
+            (out)[4] = delta_rate; \
+        } while (0)
+    DERIV(state, k1);
+    for (int i = 0; i < 5; ++i) tmp[i] = state[i] + 0.5 * dt * k1[i];
+    DERIV(tmp, k2);
+    for (int i = 0; i < 5; ++i) tmp[i] = state[i] + 0.5 * dt * k2[i];
+    DERIV(tmp, k3);
+    for (int i = 0; i < 5; ++i) tmp[i] = state[i] + dt * k3[i];
+    DERIV(tmp, k4);
+    #undef DERIV
+
+    for (int i = 0; i < 5; ++i) {
+        next[i] = state[i] + (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);
+    }
+    next[2] = wrap_angle(next[2]);
+    if (next[3] < v_min) next[3] = v_min;
+    if (next[3] > v_max) next[3] = v_max;
+    if (next[4] < delta_min) next[4] = delta_min;
+    if (next[4] > delta_max) next[4] = delta_max;
 }
 
 int main(int argc, char **argv)
@@ -293,7 +383,7 @@ int main(int argc, char **argv)
     const double v_max = 12.0;
     const double delta_min = -0.50;
     const double delta_max = 0.50;
-    const int stride = (int) fmax(1.0, llround(target_speed * dt / fmax(track.avg_ds, 1e-6)));
+    const int stride_hint = (int) fmax(1.0, llround(target_speed * dt / fmax(track.avg_ds, 1e-6)));
 
     double xcurrent[NX] = {track.x[0], track.y[0], track.psi[0], target_speed, 0.0};
     double x_guess[NX] = {track.x[0], track.y[0], track.psi[0], target_speed, 0.0};
@@ -324,24 +414,23 @@ int main(int argc, char **argv)
         double p_stage[NP];
         for (int k = 0; k <= N_HORIZON; ++k)
         {
-            const int idx = (ref_idx + k * stride) % track.count;
-            stage_params(&track, idx, target_speed, p_stage);
+            stage_params(&track, track.s[ref_idx] + (double) k * target_speed * dt, target_speed, p_stage);
             @MODEL_NAME@_acados_update_params(solver_capsule, k, p_stage, NP);
         }
 
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
 
+        const double start_ms = monotonic_time_ms();
         int status = @MODEL_NAME@_acados_solve(solver_capsule);
-        double elapsed = 0.0;
+        const double elapsed_ms = monotonic_time_ms() - start_ms;
         int sqp_iter = 0;
-        ocp_nlp_get(nlp_solver, "time_tot", &elapsed);
         ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
         double u0[NU];
         ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
 
-        stage_params(&track, ref_idx, target_speed, p_stage);
+        stage_params(&track, track.s[ref_idx], target_speed, p_stage);
         const double lateral = p_stage[4] * (xcurrent[0] - p_stage[0]) + p_stage[5] * (xcurrent[1] - p_stage[1]);
         double max_viol = 0.0;
         const double cands[6] = {
@@ -356,22 +445,16 @@ int main(int argc, char **argv)
         const double tracking_error = hypot(xcurrent[0] - p_stage[0], xcurrent[1] - p_stage[1]);
 
         fprintf(csv, "%d,%d,%.9f,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%d\n",
-                step, status, elapsed * 1000.0, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4],
+                step, status, elapsed_ms, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4],
                 tracking_error, max_viol, ref_idx);
 
         if (status == 0) success++;
-        times[step] = elapsed * 1000.0;
+        times[step] = elapsed_ms;
 
-        xcurrent[0] += xcurrent[3] * cos(xcurrent[2]) * dt;
-        xcurrent[1] += xcurrent[3] * sin(xcurrent[2]) * dt;
-        xcurrent[2] = wrap_angle(xcurrent[2] + xcurrent[3] * tan(xcurrent[4]) / wheelbase * dt);
-        xcurrent[3] += u0[0] * dt;
-        if (xcurrent[3] < v_min) xcurrent[3] = v_min;
-        if (xcurrent[3] > v_max) xcurrent[3] = v_max;
-        xcurrent[4] += u0[1] * dt;
-        if (xcurrent[4] < delta_min) xcurrent[4] = delta_min;
-        if (xcurrent[4] > delta_max) xcurrent[4] = delta_max;
-        ref_idx = nearest_cyclic_index(&track, xcurrent[0], xcurrent[1], ref_idx + stride, 30 + 4 * stride);
+        double xnext[NX];
+        simulate_step(xcurrent, u0[0], u0[1], dt, wheelbase, v_min, v_max, delta_min, delta_max, xnext);
+        for (int i = 0; i < NX; ++i) xcurrent[i] = xnext[i];
+        ref_idx = nearest_cyclic_index(&track, xcurrent[0], xcurrent[1], ref_idx + stride_hint, 30 + 4 * stride_hint);
     }
     fclose(csv);
 

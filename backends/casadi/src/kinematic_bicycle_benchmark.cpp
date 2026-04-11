@@ -173,8 +173,39 @@ Args parse_args(int argc, char** argv) {
     return args;
 }
 
-std::vector<double> stage_params(const nmpc_bench::DrivingTrackAsset& asset, size_t idx, double target_speed) {
-    return {asset.x[idx], asset.y[idx], asset.psi[idx], target_speed, asset.nx[idx], asset.ny[idx], asset.w_left[idx], asset.w_right[idx]};
+std::vector<double> stage_params(const nmpc_bench::DrivingTrackAsset& asset, double ref_s, double target_speed) {
+    const auto sample = nmpc_bench::sample_driving_track(asset, ref_s);
+    return {sample.x, sample.y, sample.psi, target_speed, sample.nx, sample.ny, sample.w_left, sample.w_right};
+}
+
+std::vector<double> simulate_step(const std::vector<double>& state, double a, double delta_rate, double dt) {
+    auto deriv = [&](const std::vector<double>& s) {
+        return std::vector<double>{
+            s[3] * std::cos(s[2]),
+            s[3] * std::sin(s[2]),
+            s[3] * std::tan(s[4]) / kWheelbase,
+            a,
+            delta_rate,
+        };
+    };
+    auto add_scaled = [&](const std::vector<double>& s, const std::vector<double>& ds, double scale) {
+        std::vector<double> out = s;
+        for (int i = 0; i < kNx; ++i) out[static_cast<size_t>(i)] += scale * ds[static_cast<size_t>(i)];
+        return out;
+    };
+    const auto k1 = deriv(state);
+    const auto k2 = deriv(add_scaled(state, k1, 0.5 * dt));
+    const auto k3 = deriv(add_scaled(state, k2, 0.5 * dt));
+    const auto k4 = deriv(add_scaled(state, k3, dt));
+
+    std::vector<double> next = state;
+    for (int i = 0; i < kNx; ++i) {
+        next[static_cast<size_t>(i)] += (dt / 6.0) * (k1[static_cast<size_t>(i)] + 2.0 * k2[static_cast<size_t>(i)] + 2.0 * k3[static_cast<size_t>(i)] + k4[static_cast<size_t>(i)]);
+    }
+    next[2] = nmpc_bench::wrap_angle(next[2]);
+    next[3] = std::clamp(next[3], kVMin, kVMax);
+    next[4] = std::clamp(next[4], kDeltaMin, kDeltaMax);
+    return next;
 }
 
 }  // namespace
@@ -183,15 +214,14 @@ int main(int argc, char** argv) {
     try {
         const Args args = parse_args(argc, argv);
         const auto asset = nmpc_bench::load_driving_track(args.asset_path);
-        const size_t stride = std::max<size_t>(1, static_cast<size_t>(std::llround(args.target_speed * args.dt / std::max(asset.avg_ds, 1e-6))));
+        const size_t stride_hint = std::max<size_t>(1, static_cast<size_t>(std::llround(args.target_speed * args.dt / std::max(asset.avg_ds, 1e-6))));
         Function solver = build_solver(args.horizon, args.dt);
 
         std::vector<double> current = {asset.x.front(), asset.y.front(), asset.psi.front(), args.target_speed, 0.0};
         size_t ref_idx = 0;
         std::vector<double> last_w(static_cast<size_t>((args.horizon + 1) * kNx + args.horizon * kNu + args.horizon * kNh), 0.0);
         for (int k = 0; k <= args.horizon; ++k) {
-            const size_t idx = (ref_idx + static_cast<size_t>(k) * stride) % asset.x.size();
-            const auto pk = stage_params(asset, idx, args.target_speed);
+            const auto pk = stage_params(asset, asset.s[ref_idx] + static_cast<double>(k) * args.target_speed * args.dt, args.target_speed);
             std::copy(pk.begin(), pk.begin() + 5, last_w.begin() + static_cast<size_t>(k * kNx));
         }
 
@@ -241,12 +271,10 @@ int main(int argc, char** argv) {
             params.reserve(static_cast<size_t>(kNx + (args.horizon + 1) * kNp));
             params.insert(params.end(), current.begin(), current.end());
             for (int k = 0; k <= args.horizon; ++k) {
-                const size_t idx = (ref_idx + static_cast<size_t>(k) * stride) % asset.x.size();
-                const auto pk = stage_params(asset, idx, args.target_speed);
+                const auto pk = stage_params(asset, asset.s[ref_idx] + static_cast<double>(k) * args.target_speed * args.dt, args.target_speed);
                 params.insert(params.end(), pk.begin(), pk.end());
             }
 
-            const auto start = std::chrono::steady_clock::now();
             DMDict arg;
             arg["x0"] = DM(last_w);
             arg["lbx"] = DM(lbx);
@@ -254,6 +282,7 @@ int main(int argc, char** argv) {
             arg["lbg"] = DM(lbg);
             arg["ubg"] = DM(ubg);
             arg["p"] = DM(params);
+            const auto start = std::chrono::steady_clock::now();
             DMDict sol = solver(arg);
             const auto end = std::chrono::steady_clock::now();
             const double time_ms = std::chrono::duration<double, std::milli>(end - start).count();
@@ -267,7 +296,7 @@ int main(int argc, char** argv) {
             const int iterations = static_cast<int>(stats.at("iter_count"));
             const std::vector<double> u0 = {solution[static_cast<size_t>(u_offset)], solution[static_cast<size_t>(u_offset + 1)]};
             const double tracking_error = std::hypot(current[0] - asset.x[ref_idx], current[1] - asset.y[ref_idx]);
-            const auto pk0 = stage_params(asset, ref_idx, args.target_speed);
+            const auto pk0 = stage_params(asset, asset.s[ref_idx], args.target_speed);
             const double lateral = pk0[4] * (current[0] - pk0[0]) + pk0[5] * (current[1] - pk0[1]);
             const double max_viol = std::max({0.0, lateral - pk0[6], -lateral - pk0[7], current[3] - kVMax, kVMin - current[3], current[4] - kDeltaMax, kDeltaMin - current[4]});
 
@@ -275,12 +304,8 @@ int main(int argc, char** argv) {
                 << current[0] << ',' << current[1] << ',' << current[2] << ',' << current[3] << ',' << current[4] << ','
                 << tracking_error << ',' << max_viol << ',' << ref_idx << '\n';
 
-            current[0] += current[3] * std::cos(current[2]) * args.dt;
-            current[1] += current[3] * std::sin(current[2]) * args.dt;
-            current[2] = nmpc_bench::wrap_angle(current[2] + current[3] * std::tan(current[4]) / kWheelbase * args.dt);
-            current[3] = std::clamp(current[3] + u0[0] * args.dt, kVMin, kVMax);
-            current[4] = std::clamp(current[4] + u0[1] * args.dt, kDeltaMin, kDeltaMax);
-            ref_idx = nmpc_bench::nearest_cyclic_index(asset, current[0], current[1], ref_idx + stride, 30 + 4 * stride);
+            current = simulate_step(current, u0[0], u0[1], args.dt);
+            ref_idx = nmpc_bench::nearest_cyclic_index(asset, current[0], current[1], ref_idx + stride_hint, 30 + 4 * stride_hint);
         }
         std::cout << "steps=" << args.steps << " success=" << success
                   << " median_ms=" << percentile(times, 0.5)

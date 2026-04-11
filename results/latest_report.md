@@ -4,11 +4,11 @@ Date: 2026-04-10
 
 ## Provenance
 
-- `nmpc-bench`: `uncommitted-workspace`
+- `nmpc-bench`: `d244384539a019401c3feca17893ddb2eddba1b5`
 - `acados`: `third_party/acados` at `47b961bcaf493de59048918ffaa585181466ea65`
 - `MiniSolver`: local checkout `/home/quyaonan/workspace/MiniSolver`
   - branch: `master`
-  - commit: `f541d49d967edd5a8d50d931c6ae7ca6873a2c1b`
+  - commit: `21d71b7d2a83a216cc8d454b2cc92f24cac9eda2`
 
 ## Summary
 
@@ -25,21 +25,21 @@ Date: 2026-04-10
 | `minisolver` | `chain_mass` | 25 | 1 | 2.1442 | 3.83935 | 5.73771 | `avg_iterations=3.56`, `max_constraint_violation=0`, `min_wall_dist=0.00112253` |
 | `acados` | `chain_mass` | 25 | 1 | 6.002 | 9.3336 | 9.352 | `min_wall_dist=-0.00841888` |
 | `casadi` | `chain_mass` | 25 | 1 | 373.413 | 400.758 | 412.369 | `avg_iterations=2.32`, `min_wall_dist=-0.000475765` |
-| `minisolver` | `data_driven_mpc_lemniscate_tracking` | 500 | 1 | 0.0837195 | 0.0878028 | 0.164849 | `avg_iterations=2.002`, `max_constraint_violation=0`, `avg_tracking_error=5.64856`, `final_tracking_error=9.64606` |
-| `minisolver` | `data_driven_mpc_loop_tracking` | 500 | 1 | 0.0838015 | 0.0915315 | 0.136348 | `avg_iterations=2.002`, `max_constraint_violation=0`, `avg_tracking_error=6.18116`, `final_tracking_error=10.4907` |
-| `minisolver` | `mpcc_track_following` | 400 | 0.02 | 5.52489 | 6.22106 | 6.49809 | `avg_iterations=59.3725`, `max_constraint_violation=40.7789`, `avg_speed=9.35694`, `avg_tracking_error=2.10695`, `final_tracking_error=2.40594` |
-| `minisolver` | `nonlinear_mpcc_fssim_following` | 1200 | 0.988 | 6.56949 | 7.73193 | 9.12065 | `avg_iterations=55.265`, `max_constraint_violation=0.691586`, `avg_speed=9.37842`, `avg_tracking_error=0.61476`, `final_tracking_error=0.877518` |
-| `minisolver` | `nonlinear_mpcc_porto_following` | 600 | 0.997 | 5.64281 | 6.42677 | 7.84063 | `avg_iterations=57.545`, `max_constraint_violation=0.133782`, `avg_speed=11.2065`, `avg_tracking_error=0.565746`, `final_tracking_error=0.571822` |
-| `acados` | `data_driven_mpc_lemniscate_tracking` | 500 | 1 | 0.091 | 0.182 | 0.245 | `avg_iterations=0.994`, `max_constraint_violation=0`, `avg_tracking_error=4.17021`, `final_tracking_error=7.32787` |
-| `acados` | `data_driven_mpc_loop_tracking` | 500 | 1 | 0.091 | 0.113 | 0.179 | `avg_iterations=0.996`, `max_constraint_violation=0`, `avg_tracking_error=4.61694`, `final_tracking_error=7.32531` |
-| `acados` | `mpcc_track_following` | 400 | 0 | 0.61 | 0.66805 | 0.989 | `avg_iterations=1`, `max_constraint_violation=47.6196`, `avg_speed=2.5`, `avg_tracking_error=23.0953`, `final_tracking_error=47.9929` |
-| `acados` | `nonlinear_mpcc_fssim_following` | 1200 | 0.848 | 0.068 | 7.41605 | 8.969 | `avg_iterations=3.43333`, `max_constraint_violation=3.57817`, `avg_speed=0.778856`, `avg_tracking_error=2.61523`, `final_tracking_error=2.24323` |
-| `acados` | `nonlinear_mpcc_porto_following` | 600 | 0.967 | 0.447 | 1.97215 | 3.121 | `avg_iterations=5.06167`, `max_constraint_violation=14.669`, `avg_speed=7.43766`, `avg_tracking_error=12.0808`, `final_tracking_error=14.3333` |
+| `minisolver` | `data_driven_mpc_lemniscate_tracking` | 500 | 1 | 0.04279 | 0.0829758 | 0.170776 | `avg_iterations=3.392`, `max_constraint_violation=0`, `avg_tracking_error=0.10448`, `final_tracking_error=0.00197805` |
+| `minisolver` | `data_driven_mpc_loop_tracking` | 500 | 1 | 0.030502 | 0.042611 | 0.082827 | `avg_iterations=2.898`, `max_constraint_violation=0`, `avg_tracking_error=0.0273859`, `final_tracking_error=0.00232988` |
+| `minisolver` | `mpcc_track_following` | 400 | 0.0225 | 0.516871 | 3.92812 | 6.22722 | `avg_iterations=30.8325`, `max_constraint_violation=6.08021`, `avg_speed=6.73929`, `avg_tracking_error=1.29962`, `final_tracking_error=0.764616` |
+| `minisolver` | `nonlinear_mpcc_fssim_following` | 1200 | 1 | 0.124634 | 0.160365 | 0.846379 | `avg_iterations=3.81833`, `max_constraint_violation=0`, `avg_speed=8.01675`, `avg_tracking_error=0.0685242`, `final_tracking_error=0.116547` |
+| `minisolver` | `nonlinear_mpcc_porto_following` | 600 | 1 | 0.077778 | 0.108051 | 0.98224 | `avg_iterations=3.17833`, `max_constraint_violation=0`, `avg_speed=6.00057`, `avg_tracking_error=0.026356`, `final_tracking_error=0.011208` |
+| `acados` | `data_driven_mpc_lemniscate_tracking` | 500 | 1 | 0.0947706 | 0.188829 | 1.5078 | `avg_iterations=0.994`, `max_constraint_violation=0`, `avg_tracking_error=4.17021`, `final_tracking_error=7.32787` |
+| `acados` | `data_driven_mpc_loop_tracking` | 500 | 1 | 0.092665 | 0.118436 | 0.169756 | `avg_iterations=0.996`, `max_constraint_violation=0`, `avg_tracking_error=4.61694`, `final_tracking_error=7.32531` |
+| `acados` | `mpcc_track_following` | 400 | 0 | 0.584725 | 0.641001 | 0.98426 | `avg_iterations=1`, `max_constraint_violation=47.6196`, `avg_speed=2.5`, `avg_tracking_error=23.0953`, `final_tracking_error=47.9929` |
+| `acados` | `nonlinear_mpcc_fssim_following` | 1200 | 1 | 0.070071 | 0.43564 | 0.546143 | `avg_iterations=0.499167`, `max_constraint_violation=34.3269`, `avg_speed=7.99096`, `avg_tracking_error=27.9709`, `final_tracking_error=32.0262` |
+| `acados` | `nonlinear_mpcc_porto_following` | 600 | 1 | 0.365769 | 0.405735 | 0.560773 | `avg_iterations=1.625`, `max_constraint_violation=3.79406`, `avg_speed=5.97223`, `avg_tracking_error=2.6298`, `final_tracking_error=1.9865` |
 | `casadi` | `data_driven_mpc_lemniscate_tracking` | 500 | 1 | 6.32731 | 7.63235 | 13.3216 | `avg_iterations=1.002`, `max_constraint_violation=1.77636e-15`, `avg_tracking_error=0.10448`, `final_tracking_error=0.00197783` |
 | `casadi` | `data_driven_mpc_loop_tracking` | 500 | 1 | 6.21193 | 6.37218 | 8.08882 | `avg_iterations=1`, `max_constraint_violation=0`, `avg_tracking_error=0.0273858`, `final_tracking_error=0.00232964` |
 | `casadi` | `mpcc_track_following` | 400 | 0.953 | 148.59 | 864.913 | 3794.16 | `avg_iterations=2.04`, `max_constraint_violation=0.322332`, `avg_speed=10.7955`, `avg_tracking_error=0.281649`, `final_tracking_error=0.125879` |
-| `casadi` | `nonlinear_mpcc_fssim_following` | 1200 | 0.968 | 222.877 | 230.646 | 7805.82 | `avg_iterations=1.72`, `max_constraint_violation=0`, `avg_speed=11.9311`, `avg_tracking_error=0.413769`, `final_tracking_error=0.416136` |
-| `casadi` | `nonlinear_mpcc_porto_following` | 600 | 0.983 | 185.873 | 193.42 | 4761.42 | `avg_iterations=1.44167`, `max_constraint_violation=0`, `avg_speed=0.268256`, `avg_tracking_error=0.422826`, `final_tracking_error=0.271951` |
+| `casadi` | `nonlinear_mpcc_fssim_following` | 1200 | 0.998 | 0.58985 | 53.7348 | 5065.9 | `avg_iterations=1.3`, `max_constraint_violation=0`, `avg_speed=11.3022`, `avg_tracking_error=0.511541`, `final_tracking_error=0.524476` |
+| `casadi` | `nonlinear_mpcc_porto_following` | 600 | 0.985 | 194.203 | 924.837 | 4095.2 | `avg_iterations=1.94667`, `max_constraint_violation=1.02624e+08`, `avg_speed=11.8928`, `avg_tracking_error=4.97621e+07`, `final_tracking_error=6.00939e+07` |
 
 ## Fairness Notes
 

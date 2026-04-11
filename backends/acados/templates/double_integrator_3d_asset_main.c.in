@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/types.h>
 
 #include "acados_c/ocp_nlp_interface.h"
@@ -54,6 +55,13 @@ static double percentile(const double *values, int n, double frac)
     const double out = tmp[lo] * (1.0 - w) + tmp[hi] * w;
     free(tmp);
     return out;
+}
+
+static double monotonic_time_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double) ts.tv_sec * 1000.0 + (double) ts.tv_nsec / 1.0e6;
 }
 
 static int split_csv(char *line, char **parts, int max_parts)
@@ -250,10 +258,10 @@ int main(int argc, char **argv)
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
 
+        const double start_ms = monotonic_time_ms();
         int status = @MODEL_NAME@_acados_solve(solver_capsule);
-        double elapsed = 0.0;
+        const double elapsed_ms = monotonic_time_ms() - start_ms;
         int sqp_iter = 0;
-        ocp_nlp_get(nlp_solver, "time_tot", &elapsed);
         ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
         double u0[NU];
@@ -271,10 +279,10 @@ int main(int argc, char **argv)
         for (int i = 0; i < 6; ++i) if (cands[i] > max_viol) max_viol = cands[i];
 
         fprintf(csv, "%d,%d,%.9f,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
-                step, status, elapsed * 1000.0, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4], xcurrent[5],
+                step, status, elapsed_ms, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4], xcurrent[5],
                 tracking_error, max_viol);
         if (status == 0) success++;
-        times[step] = elapsed * 1000.0;
+        times[step] = elapsed_ms;
 
         xcurrent[0] += xcurrent[3] * dt + 0.5 * u0[0] * dt * dt;
         xcurrent[1] += xcurrent[4] * dt + 0.5 * u0[1] * dt * dt;

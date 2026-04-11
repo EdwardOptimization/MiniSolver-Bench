@@ -204,7 +204,6 @@ int main(int argc, char** argv) {
                 const auto pk = stage_params(asset, idx);
                 params.insert(params.end(), pk.begin(), pk.end());
             }
-            const auto start = std::chrono::steady_clock::now();
             DMDict arg;
             arg["x0"] = DM(last_w);
             arg["lbx"] = DM(lbx);
@@ -212,6 +211,7 @@ int main(int argc, char** argv) {
             arg["lbg"] = DM(lbg);
             arg["ubg"] = DM(ubg);
             arg["p"] = DM(params);
+            const auto start = std::chrono::steady_clock::now();
             DMDict sol = solver(arg);
             const auto end = std::chrono::steady_clock::now();
             const double time_ms = std::chrono::duration<double, std::milli>(end - start).count();

@@ -25,6 +25,16 @@ struct DrivingTrackAsset {
     double avg_ds = 0.1;
 };
 
+struct DrivingTrackSample {
+    double x = 0.0;
+    double y = 0.0;
+    double psi = 0.0;
+    double nx = 0.0;
+    double ny = 0.0;
+    double w_left = 0.0;
+    double w_right = 0.0;
+};
+
 struct RobotReferenceAsset {
     std::vector<double> t;
     std::vector<double> x;
@@ -175,6 +185,52 @@ inline size_t nearest_cyclic_index(const DrivingTrackAsset& asset, double x, dou
         }
     }
     return best;
+}
+
+inline DrivingTrackSample sample_driving_track(const DrivingTrackAsset& asset, double s_query) {
+    const size_t n = asset.s.size();
+    if (n == 0) {
+        throw std::runtime_error("cannot sample empty driving asset");
+    }
+    if (n == 1) {
+        return DrivingTrackSample{
+            asset.x[0], asset.y[0], asset.psi[0], asset.nx[0], asset.ny[0], asset.w_left[0], asset.w_right[0]
+        };
+    }
+
+    const double seam_ds = std::hypot(asset.x.front() - asset.x.back(), asset.y.front() - asset.y.back());
+    const double period = asset.s.back() + ((seam_ds > 1e-9) ? seam_ds : 0.0);
+    double s_wrapped = std::fmod(s_query, period);
+    if (s_wrapped < 0.0) s_wrapped += period;
+
+    size_t hi = static_cast<size_t>(std::upper_bound(asset.s.begin(), asset.s.end(), s_wrapped) - asset.s.begin());
+    size_t lo = (hi == 0) ? (n - 1) : (hi - 1);
+    if (hi >= n) hi = 0;
+
+    double s0 = asset.s[lo];
+    double s1 = (hi == 0) ? period : asset.s[hi];
+    double alpha = 0.0;
+    if (s1 > s0 + 1e-12) {
+        alpha = (s_wrapped - s0) / (s1 - s0);
+    }
+    alpha = std::clamp(alpha, 0.0, 1.0);
+
+    auto lerp = [&](double a, double b) { return a * (1.0 - alpha) + b * alpha; };
+
+    double psi0 = asset.psi[lo];
+    double psi1 = asset.psi[hi];
+    double dpsi = wrap_angle(psi1 - psi0);
+    double psi = wrap_angle(psi0 + alpha * dpsi);
+
+    DrivingTrackSample sample;
+    sample.x = lerp(asset.x[lo], asset.x[hi]);
+    sample.y = lerp(asset.y[lo], asset.y[hi]);
+    sample.psi = psi;
+    sample.nx = -std::sin(psi);
+    sample.ny = std::cos(psi);
+    sample.w_left = lerp(asset.w_left[lo], asset.w_left[hi]);
+    sample.w_right = lerp(asset.w_right[lo], asset.w_right[hi]);
+    return sample;
 }
 
 }  // namespace nmpc_bench
