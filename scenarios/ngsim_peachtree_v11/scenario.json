@@ -1,0 +1,15 @@
+{
+  "name": "ngsim_peachtree_v11",
+  "domain": "driving",
+  "model": "kinematic_bicycle_v1",
+  "dt": 0.1,
+  "N": 50,
+  "x0": [
+    12.4657104,
+    610.0069080000001,
+    -2.996622023417238,
+    4.568952,
+    0.0
+  ],
+  "ref": "ref.csv"
+}

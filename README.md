@@ -176,3 +176,34 @@ Run all four CasADi cases:
 python3 backends/casadi/run_all.py \
   --acados-repo third_party/acados
 ```
+
+## Dataset-Driven Scenarios (CPU, C++ Runner)
+
+This repo also includes a tiny set of **dataset-driven** NMPC scenarios under `scenarios/`.
+They use public datasets as sources of *reference trajectories*, while dynamics/constraints remain solver-defined.
+
+Design notes live under `docs/` (see `docs/DESIGN.md`).
+
+Build the C++ runner:
+
+```bash
+cmake -S . -B build -DMINISOLVER_SOURCE_DIR=/path/to/MiniSolver
+cmake --build build -j
+./build/minisolver_real_scenarios --list
+./build/minisolver_real_scenarios --scenario scenarios/ngsim_i80_v36/scenario.json --check-gt
+```
+
+Import datasets (offline):
+
+```bash
+python3 tools/import_ngsim.py --vehicle-id 36 --location i-80 --start-time-ms 1113433135300 --duration-s 5.0 --N 50 --dt 0.1 --name ngsim_i80_v36 --output-root scenarios
+python3 tools/import_tum_rgbd.py --url https://cvg.cit.tum.de/rgbd/dataset/freiburg1/rgbd_dataset_freiburg1_xyz-groundtruth.txt --start-time 1305031098.6659 --duration-s 6.0 --N 50 --dt 0.1 --name tum_freiburg1_xyz --output-root scenarios
+```
+
+Regenerate ground-truth (offline):
+
+```bash
+python3 -m pip install -r tools/requirements.txt
+python3 tools/generate_gt.py --scenario-root scenarios
+```
+

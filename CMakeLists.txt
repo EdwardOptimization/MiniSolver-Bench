@@ -141,6 +141,18 @@ if(MINISOLVER_SOURCE_DIR)
     add_dependencies(minisolver_double_integrator_3d_benchmark generate_minisolver_double_integrator_3d_model)
     target_include_directories(minisolver_double_integrator_3d_benchmark PRIVATE "${NMPC_BENCH_COMMON_INCLUDE_DIR}" "${MINISOLVER_GENERATED_DIR}")
     target_link_libraries(minisolver_double_integrator_3d_benchmark PRIVATE minisolver_lib)
+
+    # Dataset-driven real scenario runner (C++ timing, no Python runtime runner).
+    set(NMPC_BENCH_REAL_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/generated")
+    add_executable(minisolver_real_scenarios
+        src/minisolver_runner.cpp
+    )
+    target_include_directories(minisolver_real_scenarios PRIVATE
+        "${NMPC_BENCH_COMMON_INCLUDE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann"
+        "${NMPC_BENCH_REAL_MODELS_DIR}"
+    )
+    target_link_libraries(minisolver_real_scenarios PRIVATE minisolver_lib)
 endif()
 
 if(CASADI_ROOT)
