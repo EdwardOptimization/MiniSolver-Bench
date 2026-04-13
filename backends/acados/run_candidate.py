@@ -111,6 +111,9 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
 
     dt = float(candidate["dt"])
     horizon = int(candidate["horizon"])
+    vehicle = candidate.get("vehicle", {})
+    if not isinstance(vehicle, dict):
+        vehicle = {}
 
     x = ca.SX.sym("x")
     y = ca.SX.sym("y")
@@ -126,9 +129,10 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
     p = ca.SX.sym("p", 8)
     x_ref, y_ref, psi_ref, v_ref, n_x, n_y, w_left, w_right = [p[i] for i in range(8)]
 
-    wheelbase = 0.33
     v_min, v_max = 0.1, 12.0
-    delta_min, delta_max = -0.50, 0.50
+    wheelbase = float(vehicle.get("wheelbase_m", 0.33))
+    delta_max = float(vehicle.get("delta_max_rad", 0.50))
+    delta_min = -delta_max
 
     f_expl = ca.vertcat(
         v * ca.cos(psi),
@@ -233,6 +237,8 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
         "horizon": horizon,
         "dt": dt,
         "target_speed_mps": float(candidate.get("target_speed_mps", 0.0)),
+        "wheelbase": wheelbase,
+        "delta_max": delta_max,
         "defaults": {"steps": int(candidate["closed_loop_steps"])},
     }
 
@@ -326,6 +332,7 @@ EXPORTERS = {
 
 def render_runner(metadata: dict, template_dir: Path) -> str:
     text = (template_dir / metadata["runner_template"]).read_text(encoding="utf-8")
+    delta_max = float(metadata.get("delta_max", 0.50))
     replacements = {
         "@CANDIDATE_NAME@": metadata["candidate_name"],
         "@MODEL_NAME@": metadata["model_name"],
@@ -333,6 +340,9 @@ def render_runner(metadata: dict, template_dir: Path) -> str:
         "@STEPS_DEFAULT@": str(metadata["defaults"]["steps"]),
         "@DT@": f"{float(metadata['dt']):.17g}",
         "@TARGET_SPEED@": f"{float(metadata.get('target_speed_mps', 0.0)):.17g}",
+        "@WHEELBASE@": f"{float(metadata.get('wheelbase', 0.33)):.17g}",
+        "@DELTA_MAX@": f"{delta_max:.17g}",
+        "@DELTA_MIN@": f"{-delta_max:.17g}",
     }
     for key, value in replacements.items():
         text = text.replace(key, value)

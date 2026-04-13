@@ -69,6 +69,12 @@ def main() -> int:
     cmd = [str(binary), "--asset", str(asset_path), "--output", str(output), "--dt", str(candidate["dt"]), "--horizon", str(candidate["horizon"]), "--steps", str(args.steps if args.steps is not None else candidate["closed_loop_steps"])]
     if "target_speed_mps" in candidate:
         cmd += ["--target-speed", str(candidate["target_speed_mps"])]
+    vehicle = candidate.get("vehicle", {})
+    if isinstance(vehicle, dict):
+        if "wheelbase_m" in vehicle:
+            cmd += ["--wheelbase", str(vehicle["wheelbase_m"])]
+        if "delta_max_rad" in vehicle:
+            cmd += ["--delta-max", str(vehicle["delta_max_rad"])]
     run_command(cmd)
     return 0
 

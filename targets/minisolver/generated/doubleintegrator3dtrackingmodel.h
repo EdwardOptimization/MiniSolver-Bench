@@ -226,6 +226,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.B(5,2) = tmp_d2;
                 break;
             }
+            default:
+                break;
         }
     }
 

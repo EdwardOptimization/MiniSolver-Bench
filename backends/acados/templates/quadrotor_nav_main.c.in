@@ -123,8 +123,8 @@ int main(int argc, char **argv)
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
 
         int status = @MODEL_NAME@_acados_solve(solver_capsule);
-        double elapsed1 = 0.0;
-        ocp_nlp_get(nlp_solver, "time_tot", &elapsed1);
+        double elapsed = 0.0;
+        ocp_nlp_get(nlp_solver, "time_tot", &elapsed);
 
         double u0[NU];
         ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
@@ -136,13 +136,8 @@ int main(int argc, char **argv)
         }
         sim_out_get(sim_config, sim_dims, sim_out, "x", xcurrent);
 
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", xcurrent);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", xcurrent);
-        status = @MODEL_NAME@_acados_solve(solver_capsule);
-        double elapsed2 = 0.0;
-        ocp_nlp_get(nlp_solver, "time_tot", &elapsed2);
-
-        times[executed] = (elapsed1 + elapsed2) * 1000.0;
+        // One solve per closed-loop step (matches other runners + MiniSolver benchmark).
+        times[executed] = elapsed * 1000.0;
         abs_n[executed] = fabs(xcurrent[1]);
         abs_b[executed] = fabs(xcurrent[2]);
         statuses[executed] = status;

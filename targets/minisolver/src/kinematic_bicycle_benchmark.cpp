@@ -17,11 +17,11 @@ using namespace minisolver;
 namespace {
 
 constexpr int kMaxHorizon = 128;
-constexpr double kWheelbase = 0.33;
+constexpr double kDefaultWheelbase = 0.33;
 constexpr double kVMin = 0.1;
 constexpr double kVMax = 12.0;
-constexpr double kDeltaMin = -0.50;
-constexpr double kDeltaMax = 0.50;
+constexpr double kDefaultDeltaMax = 0.50;
+constexpr double kDeltaRateMax = 6.0;
 
 template <typename Model, int MAX_N>
 void shift_primal_guess(MiniSolver<Model, MAX_N>& solver) {
@@ -51,12 +51,13 @@ struct DrivingState {
     double delta = 0.0;
 };
 
-DrivingState simulate(const DrivingState& state, double a, double delta_rate, double dt) {
+DrivingState simulate(const DrivingState& state, double a, double delta_rate, double dt, double wheelbase, double delta_max) {
+    const double delta_min = -delta_max;
     auto deriv = [&](const DrivingState& s) {
         return DrivingState{
             s.v * std::cos(s.psi),
             s.v * std::sin(s.psi),
-            s.v * std::tan(s.delta) / kWheelbase,
+            s.v * std::tan(s.delta) / wheelbase,
             a,
             delta_rate,
         };
@@ -85,13 +86,15 @@ DrivingState simulate(const DrivingState& state, double a, double delta_rate, do
     };
     next.psi = nmpc_bench::wrap_angle(next.psi);
     next.v = std::clamp(next.v, kVMin, kVMax);
-    next.delta = std::clamp(next.delta, kDeltaMin, kDeltaMax);
+    next.delta = std::clamp(next.delta, delta_min, delta_max);
     return next;
 }
 
 double current_step_constraint_violation(const DrivingState& current,
                                          const nmpc_bench::DrivingTrackAsset& asset,
-                                         double ref_s) {
+                                         double ref_s,
+                                         double delta_max) {
+    const double delta_min = -delta_max;
     const auto sample = nmpc_bench::sample_driving_track(asset, ref_s);
     const double lateral = sample.nx * (current.x - sample.x) + sample.ny * (current.y - sample.y);
     return std::max({
@@ -100,8 +103,8 @@ double current_step_constraint_violation(const DrivingState& current,
         -lateral - sample.w_right,
         current.v - kVMax,
         kVMin - current.v,
-        current.delta - kDeltaMax,
-        kDeltaMin - current.delta,
+        current.delta - delta_max,
+        delta_min - current.delta,
     });
 }
 
@@ -128,6 +131,8 @@ struct Args {
     int steps = 100;
     double dt = 0.05;
     double target_speed = 2.5;
+    double wheelbase = kDefaultWheelbase;
+    double delta_max = kDefaultDeltaMax;
 };
 
 Args parse_args(int argc, char** argv) {
@@ -144,6 +149,8 @@ Args parse_args(int argc, char** argv) {
         else if (key == "--steps") args.steps = std::stoi(need("--steps"));
         else if (key == "--dt") args.dt = std::stod(need("--dt"));
         else if (key == "--target-speed") args.target_speed = std::stod(need("--target-speed"));
+        else if (key == "--wheelbase") args.wheelbase = std::stod(need("--wheelbase"));
+        else if (key == "--delta-max") args.delta_max = std::stod(need("--delta-max"));
         else throw std::runtime_error("unknown argument: " + key);
     }
     if (args.asset_path.empty() || args.output_path.empty()) {
@@ -152,10 +159,31 @@ Args parse_args(int argc, char** argv) {
     return args;
 }
 
-void seed_solver(MiniSolver<KinematicBicycleTrackModel, kMaxHorizon>& solver, const nmpc_bench::DrivingTrackAsset& asset, double ref_s, double dt, double target_speed) {
+void seed_solver(MiniSolver<KinematicBicycleTrackModel, kMaxHorizon>& solver,
+                 const nmpc_bench::DrivingTrackAsset& asset,
+                 double ref_s,
+                 double dt,
+                 double target_speed,
+                 double wheelbase,
+                 double delta_max) {
     const int N = solver.get_horizon();
+    const double delta_min = -delta_max;
+    std::vector<nmpc_bench::DrivingTrackSample> samples;
+    samples.reserve(static_cast<size_t>(N + 2));
+    for (int k = 0; k <= N + 1; ++k) {
+        samples.push_back(nmpc_bench::sample_driving_track(asset, ref_s + static_cast<double>(k) * target_speed * dt));
+    }
+
+    std::vector<double> delta_guess(static_cast<size_t>(N + 1), 0.0);
+    if (target_speed > 1e-9 && dt > 1e-9) {
+        for (int k = 0; k <= N; ++k) {
+            const double dpsi = nmpc_bench::wrap_angle(samples[static_cast<size_t>(k + 1)].psi - samples[static_cast<size_t>(k)].psi);
+            const double kappa = dpsi / (target_speed * dt);
+            delta_guess[static_cast<size_t>(k)] = std::clamp(std::atan(wheelbase * kappa), delta_min, delta_max);
+        }
+    }
     for (int k = 0; k <= N; ++k) {
-        const auto sample = nmpc_bench::sample_driving_track(asset, ref_s + static_cast<double>(k) * target_speed * dt);
+        const auto& sample = samples[static_cast<size_t>(k)];
         solver.set_parameter(k, 0, sample.x);
         solver.set_parameter(k, 1, sample.y);
         solver.set_parameter(k, 2, sample.psi);
@@ -168,10 +196,11 @@ void seed_solver(MiniSolver<KinematicBicycleTrackModel, kMaxHorizon>& solver, co
         solver.set_state_guess(k, 1, sample.y);
         solver.set_state_guess(k, 2, sample.psi);
         solver.set_state_guess(k, 3, target_speed);
-        solver.set_state_guess(k, 4, 0.0);
+        solver.set_state_guess(k, 4, delta_guess[static_cast<size_t>(k)]);
         if (k < N) {
             solver.set_control_guess(k, 0, 0.0);
-            solver.set_control_guess(k, 1, 0.0);
+            const double rate = (delta_guess[static_cast<size_t>(k + 1)] - delta_guess[static_cast<size_t>(k)]) / dt;
+            solver.set_control_guess(k, 1, std::clamp(rate, -kDeltaRateMax, kDeltaRateMax));
         }
     }
 }
@@ -210,6 +239,8 @@ int main(int argc, char** argv) {
 
         MiniSolver<KinematicBicycleTrackModel, kMaxHorizon> solver(args.horizon, Backend::CPU_SERIAL, make_config());
         solver.set_dt(args.dt);
+        solver.set_global_parameter("wheelbase", args.wheelbase);
+        solver.set_global_parameter("delta_max", args.delta_max);
         DrivingState current{asset.x.front(), asset.y.front(), asset.psi.front(), args.target_speed, 0.0};
         size_t ref_idx = 0;
         double ref_s = asset.s.front();
@@ -219,24 +250,23 @@ int main(int argc, char** argv) {
         std::ofstream out(args.output_path);
         out << "step,status,iterations,time_ms,x,y,psi,v,delta,tracking_error,max_constraint_violation,ref_index\n";
 
-        seed_solver(solver, asset, ref_s, args.dt, args.target_speed);
+        seed_solver(solver, asset, ref_s, args.dt, args.target_speed, args.wheelbase, args.delta_max);
         solver.set_initial_state({current.x, current.y, current.psi, current.v, current.delta});
         solver.rollout_dynamics();
 
         for (int step = 0; step < args.steps; ++step) {
-            if (step > 0 && prev_success) {
+            const bool reuse_primal = (step > 0 && prev_success);
+            if (reuse_primal) {
                 shift_primal_guess(solver);
                 SolverConfig cfg = solver.get_config();
                 cfg.initialization = InitializationMode::REUSE_PRIMAL;
                 solver.set_config(cfg);
+                update_parameters(solver, asset, ref_s, args.dt, args.target_speed);
             } else {
                 SolverConfig cfg = solver.get_config();
                 cfg.initialization = InitializationMode::COLD_START;
                 solver.set_config(cfg);
-            }
-            update_parameters(solver, asset, ref_s, args.dt, args.target_speed);
-            if (!(step > 0 && prev_success)) {
-                set_constant_control_guess(solver, last_applied_u);
+                seed_solver(solver, asset, ref_s, args.dt, args.target_speed, args.wheelbase, args.delta_max);
             }
             solver.set_initial_state({current.x, current.y, current.psi, current.v, current.delta});
             solver.rollout_dynamics();
@@ -247,7 +277,7 @@ int main(int argc, char** argv) {
             const double time_ms = std::chrono::duration<double, std::milli>(end - start).count();
             const auto ref_sample = nmpc_bench::sample_driving_track(asset, ref_s);
             const double tracking_error = std::hypot(current.x - ref_sample.x, current.y - ref_sample.y);
-            const double max_viol = current_step_constraint_violation(current, asset, ref_s);
+            const double max_viol = current_step_constraint_violation(current, asset, ref_s, args.delta_max);
             out << step << ',' << status_to_string(status) << ',' << solver.get_iteration_count() << ','
                 << std::setprecision(17) << time_ms << ',' << current.x << ',' << current.y << ','
                 << current.psi << ',' << current.v << ',' << current.delta << ',' << tracking_error << ','
@@ -258,7 +288,7 @@ int main(int argc, char** argv) {
                 const auto u = solver.get_control(0);
                 last_applied_u = {u[0], u[1]};
             }
-            current = simulate(current, last_applied_u[0], last_applied_u[1], args.dt);
+            current = simulate(current, last_applied_u[0], last_applied_u[1], args.dt, args.wheelbase, args.delta_max);
             ref_s += args.target_speed * args.dt;
             const auto next_ref_sample = nmpc_bench::sample_driving_track(asset, ref_s);
             ref_idx = nmpc_bench::nearest_cyclic_index(asset, next_ref_sample.x, next_ref_sample.y, ref_idx + stride_hint, 30 + 4 * stride_hint);

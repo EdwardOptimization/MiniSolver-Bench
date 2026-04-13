@@ -16,11 +16,11 @@ using namespace casadi;
 
 namespace {
 
-constexpr double kWheelbase = 0.33;
+constexpr double kDefaultWheelbase = 0.33;
 constexpr double kVMin = 0.1;
 constexpr double kVMax = 12.0;
-constexpr double kDeltaMin = -0.50;
-constexpr double kDeltaMax = 0.50;
+constexpr double kDefaultDeltaMax = 0.50;
+constexpr double kDeltaRateMax = 6.0;
 constexpr int kNx = 5;
 constexpr int kNu = 2;
 constexpr int kNp = 8;
@@ -43,7 +43,8 @@ bool success_status(const Dict& stats) {
     return status == "Search_Direction_Becomes_Too_Small" || status == "Solved_To_Acceptable_Level";
 }
 
-Function build_solver(int horizon, double dt) {
+Function build_solver(int horizon, double dt, double wheelbase, double delta_max) {
+    const double delta_min = -delta_max;
     SX x = SX::sym("x", kNx);
     SX u = SX::sym("u", kNu);
     SX p = SX::sym("p", kNp);
@@ -51,7 +52,7 @@ Function build_solver(int horizon, double dt) {
     SX f = SX::vertcat({
         x(3) * cos(x(2)),
         x(3) * sin(x(2)),
-        x(3) * tan(x(4)) / kWheelbase,
+        x(3) * tan(x(4)) / wheelbase,
         u(0),
         u(1),
     });
@@ -96,8 +97,8 @@ Function build_solver(int horizon, double dt) {
             -lateral - pk(7),
             X[k](3) - kVMax,
             kVMin - X[k](3),
-            X[k](4) - kDeltaMax,
-            kDeltaMin - X[k](4),
+            X[k](4) - delta_max,
+            delta_min - X[k](4),
         });
         obj += 0.5 * SX::dot(yk, mtimes(W, yk));
         g.push_back(X[k + 1] - rk4(X[k], U[k], pk));
@@ -119,8 +120,8 @@ Function build_solver(int horizon, double dt) {
         -lateralN - pN(7),
         X[horizon](3) - kVMax,
         kVMin - X[horizon](3),
-        X[horizon](4) - kDeltaMax,
-        kDeltaMin - X[horizon](4),
+        X[horizon](4) - delta_max,
+        delta_min - X[horizon](4),
     });
     g.push_back(hN);
 
@@ -158,6 +159,8 @@ struct Args {
     int steps = 100;
     double dt = 0.05;
     double target_speed = 2.5;
+    double wheelbase = kDefaultWheelbase;
+    double delta_max = kDefaultDeltaMax;
 };
 
 Args parse_args(int argc, char** argv) {
@@ -174,6 +177,8 @@ Args parse_args(int argc, char** argv) {
         else if (key == "--steps") args.steps = std::stoi(need("--steps"));
         else if (key == "--dt") args.dt = std::stod(need("--dt"));
         else if (key == "--target-speed") args.target_speed = std::stod(need("--target-speed"));
+        else if (key == "--wheelbase") args.wheelbase = std::stod(need("--wheelbase"));
+        else if (key == "--delta-max") args.delta_max = std::stod(need("--delta-max"));
         else throw std::runtime_error("unknown argument: " + key);
     }
     if (args.asset_path.empty() || args.output_path.empty()) throw std::runtime_error("required args: --asset --output");
@@ -185,12 +190,13 @@ std::vector<double> stage_params(const nmpc_bench::DrivingTrackAsset& asset, dou
     return {sample.x, sample.y, sample.psi, target_speed, sample.nx, sample.ny, sample.w_left, sample.w_right};
 }
 
-std::vector<double> simulate_step(const std::vector<double>& state, double a, double delta_rate, double dt) {
+std::vector<double> simulate_step(const std::vector<double>& state, double a, double delta_rate, double dt, double wheelbase, double delta_max) {
+    const double delta_min = -delta_max;
     auto deriv = [&](const std::vector<double>& s) {
         return std::vector<double>{
             s[3] * std::cos(s[2]),
             s[3] * std::sin(s[2]),
-            s[3] * std::tan(s[4]) / kWheelbase,
+            s[3] * std::tan(s[4]) / wheelbase,
             a,
             delta_rate,
         };
@@ -211,7 +217,7 @@ std::vector<double> simulate_step(const std::vector<double>& state, double a, do
     }
     next[2] = nmpc_bench::wrap_angle(next[2]);
     next[3] = std::clamp(next[3], kVMin, kVMax);
-    next[4] = std::clamp(next[4], kDeltaMin, kDeltaMax);
+    next[4] = std::clamp(next[4], delta_min, delta_max);
     return next;
 }
 
@@ -221,19 +227,36 @@ void seed_initial_guess(std::vector<double>& w,
                         double ref_s,
                         double dt,
                         double target_speed,
+                        double wheelbase,
+                        double delta_max,
                         const std::array<double, 2>& u_guess) {
+    const double delta_min = -delta_max;
+    std::vector<nmpc_bench::DrivingTrackSample> samples;
+    samples.reserve(static_cast<size_t>(horizon + 2));
+    for (int k = 0; k <= horizon + 1; ++k) {
+        samples.push_back(nmpc_bench::sample_driving_track(asset, ref_s + static_cast<double>(k) * target_speed * dt));
+    }
+    std::vector<double> delta_guess(static_cast<size_t>(horizon + 1), 0.0);
+    if (target_speed > 1e-9 && dt > 1e-9) {
+        for (int k = 0; k <= horizon; ++k) {
+            const double dpsi = nmpc_bench::wrap_angle(samples[static_cast<size_t>(k + 1)].psi - samples[static_cast<size_t>(k)].psi);
+            const double kappa = dpsi / (target_speed * dt);
+            delta_guess[static_cast<size_t>(k)] = std::clamp(std::atan(wheelbase * kappa), delta_min, delta_max);
+        }
+    }
     for (int k = 0; k <= horizon; ++k) {
-        const auto pk = stage_params(asset, ref_s + static_cast<double>(k) * target_speed * dt, target_speed);
-        w[static_cast<size_t>(k * kNx + 0)] = pk[0];
-        w[static_cast<size_t>(k * kNx + 1)] = pk[1];
-        w[static_cast<size_t>(k * kNx + 2)] = pk[2];
+        const auto& sample = samples[static_cast<size_t>(k)];
+        w[static_cast<size_t>(k * kNx + 0)] = sample.x;
+        w[static_cast<size_t>(k * kNx + 1)] = sample.y;
+        w[static_cast<size_t>(k * kNx + 2)] = sample.psi;
         w[static_cast<size_t>(k * kNx + 3)] = target_speed;
-        w[static_cast<size_t>(k * kNx + 4)] = 0.0;
+        w[static_cast<size_t>(k * kNx + 4)] = delta_guess[static_cast<size_t>(k)];
     }
     const int u_offset = (horizon + 1) * kNx;
     for (int k = 0; k < horizon; ++k) {
         w[static_cast<size_t>(u_offset + k * kNu + 0)] = u_guess[0];
-        w[static_cast<size_t>(u_offset + k * kNu + 1)] = u_guess[1];
+        const double rate = (delta_guess[static_cast<size_t>(k + 1)] - delta_guess[static_cast<size_t>(k)]) / dt;
+        w[static_cast<size_t>(u_offset + k * kNu + 1)] = std::clamp(rate, -kDeltaRateMax, kDeltaRateMax);
     }
 }
 
@@ -266,22 +289,23 @@ int main(int argc, char** argv) {
         const Args args = parse_args(argc, argv);
         const auto asset = nmpc_bench::load_driving_track(args.asset_path);
         const size_t stride_hint = std::max<size_t>(1, static_cast<size_t>(std::llround(args.target_speed * args.dt / std::max(asset.avg_ds, 1e-6))));
-        Function solver = build_solver(args.horizon, args.dt);
+        Function solver = build_solver(args.horizon, args.dt, args.wheelbase, args.delta_max);
 
         std::vector<double> current = {asset.x.front(), asset.y.front(), asset.psi.front(), args.target_speed, 0.0};
         size_t ref_idx = 0;
         double ref_s = asset.s.front();
         std::array<double, 2> last_applied_u{0.0, 0.0};
         std::vector<double> last_w(static_cast<size_t>((args.horizon + 1) * kNx + args.horizon * kNu), 0.0);
-        seed_initial_guess(last_w, args.horizon, asset, ref_s, args.dt, args.target_speed, last_applied_u);
+        seed_initial_guess(last_w, args.horizon, asset, ref_s, args.dt, args.target_speed, args.wheelbase, args.delta_max, last_applied_u);
 
         std::vector<double> lbx(last_w.size(), -std::numeric_limits<double>::infinity());
         std::vector<double> ubx(last_w.size(), std::numeric_limits<double>::infinity());
+        const double delta_min = -args.delta_max;
         for (int k = 0; k <= args.horizon; ++k) {
             lbx[static_cast<size_t>(k * kNx + 3)] = kVMin;
             ubx[static_cast<size_t>(k * kNx + 3)] = kVMax;
-            lbx[static_cast<size_t>(k * kNx + 4)] = kDeltaMin;
-            ubx[static_cast<size_t>(k * kNx + 4)] = kDeltaMax;
+            lbx[static_cast<size_t>(k * kNx + 4)] = delta_min;
+            ubx[static_cast<size_t>(k * kNx + 4)] = args.delta_max;
         }
         const int u_offset = (args.horizon + 1) * kNx;
         for (int k = 0; k < args.horizon; ++k) {
@@ -370,12 +394,12 @@ int main(int argc, char** argv) {
                 last_w = solution;
                 shift_warm_start(last_w, args.horizon);
             } else {
-                seed_initial_guess(last_w, args.horizon, asset, ref_s, args.dt, args.target_speed, last_applied_u);
+                seed_initial_guess(last_w, args.horizon, asset, ref_s, args.dt, args.target_speed, args.wheelbase, args.delta_max, last_applied_u);
             }
             const auto pk0 = stage_params(asset, ref_s, args.target_speed);
             const double tracking_error = std::hypot(current[0] - pk0[0], current[1] - pk0[1]);
             const double lateral = pk0[4] * (current[0] - pk0[0]) + pk0[5] * (current[1] - pk0[1]);
-            const double max_viol = std::max({0.0, lateral - pk0[6], -lateral - pk0[7], current[3] - kVMax, kVMin - current[3], current[4] - kDeltaMax, kDeltaMin - current[4]});
+            const double max_viol = std::max({0.0, lateral - pk0[6], -lateral - pk0[7], current[3] - kVMax, kVMin - current[3], current[4] - args.delta_max, delta_min - current[4]});
 
             out << step << ',' << (ok_apply ? 0 : 1) << ',' << std::setprecision(17) << time_ms << ',' << iterations << ','
                 << a0 << ',' << delta_rate0 << ','
@@ -383,7 +407,7 @@ int main(int argc, char** argv) {
                 << tracking_error << ',' << max_viol << ',' << ref_idx << '\n';
 
             if (ok_apply) last_applied_u = {u0[0], u0[1]};
-            current = simulate_step(current, last_applied_u[0], last_applied_u[1], args.dt);
+            current = simulate_step(current, last_applied_u[0], last_applied_u[1], args.dt, args.wheelbase, args.delta_max);
             ref_s += args.target_speed * args.dt;
             const auto next_ref = nmpc_bench::sample_driving_track(asset, ref_s);
             ref_idx = nmpc_bench::nearest_cyclic_index(asset, next_ref.x, next_ref.y, ref_idx + stride_hint, 30 + 4 * stride_hint);

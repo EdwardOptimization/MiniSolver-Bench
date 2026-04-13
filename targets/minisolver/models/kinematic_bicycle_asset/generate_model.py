@@ -16,11 +16,8 @@ ensure_minisolver_python_path()
 from minisolver.MiniModel import OptimalControlModel  # noqa: E402
 
 
-WHEELBASE = 0.33
 V_MIN = 0.1
 V_MAX = 12.0
-DELTA_MIN = -0.50
-DELTA_MAX = 0.50
 A_MAX = 15.0
 DELTA_RATE_MAX = 6.0
 
@@ -39,13 +36,15 @@ if __name__ == "__main__":
     n_y = model.parameter("n_y")
     w_left = model.parameter("w_left")
     w_right = model.parameter("w_right")
+    wheelbase = model.parameter("wheelbase")
+    delta_max = model.parameter("delta_max")
 
     psi_error = sp.atan2(sp.sin(psi - psi_ref), sp.cos(psi - psi_ref))
     lateral = n_x * (x - x_ref) + n_y * (y - y_ref)
 
     model.set_dynamics(x, v * sp.cos(psi))
     model.set_dynamics(y, v * sp.sin(psi))
-    model.set_dynamics(psi, v * sp.tan(delta) / WHEELBASE)
+    model.set_dynamics(psi, v * sp.tan(delta) / wheelbase)
     model.set_dynamics(v, accel)
     model.set_dynamics(delta, delta_rate)
 
@@ -61,8 +60,8 @@ if __name__ == "__main__":
     model.subject_to(-lateral - w_right <= 0)
     model.subject_to(v - V_MAX <= 0)
     model.subject_to(V_MIN - v <= 0)
-    model.subject_to(delta - DELTA_MAX <= 0)
-    model.subject_to(DELTA_MIN - delta <= 0)
+    model.subject_to(delta - delta_max <= 0)
+    model.subject_to(-delta_max - delta <= 0)
     model.subject_to(accel - A_MAX <= 0)
     model.subject_to(-A_MAX - accel <= 0)
     model.subject_to(delta_rate - DELTA_RATE_MAX <= 0)

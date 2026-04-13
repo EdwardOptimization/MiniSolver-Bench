@@ -365,11 +365,45 @@ static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
                        ocp_nlp_in *in, ocp_nlp_out *out,
                        const driving_track_t *track,
                        double ref_s, double target_speed, double dt,
+                       double wheelbase, double delta_min, double delta_max,
                        const double *xcurrent,
                        const double *u_guess)
 {
+    const double delta_rate_min = -6.0;
+    const double delta_rate_max = 6.0;
+    double psi_samples[N_HORIZON + 2];
+    for (int k = 0; k <= N_HORIZON + 1; ++k)
+    {
+        double sample[7];
+        sample_track(track, ref_s + (double) k * target_speed * dt, sample);
+        psi_samples[k] = sample[2];
+    }
+
+    double delta_guess[N_HORIZON + 1];
+    for (int k = 0; k <= N_HORIZON; ++k)
+    {
+        double delta = 0.0;
+        if (target_speed > 1e-9 && dt > 1e-9)
+        {
+            const double dpsi = wrap_angle(psi_samples[k + 1] - psi_samples[k]);
+            const double kappa = dpsi / (target_speed * dt);
+            delta = atan(wheelbase * kappa);
+        }
+        if (delta < delta_min) delta = delta_min;
+        if (delta > delta_max) delta = delta_max;
+        delta_guess[k] = delta;
+    }
+    if (xcurrent)
+    {
+        double delta0 = xcurrent[4];
+        if (delta0 < delta_min) delta0 = delta_min;
+        if (delta0 > delta_max) delta0 = delta_max;
+        delta_guess[0] = delta0;
+    }
+
     double p_stage[NP];
     double x_guess[NX];
+    double u_buf[NU];
     for (int k = 0; k <= N_HORIZON; ++k)
     {
         stage_params(track, ref_s + (double) k * target_speed * dt, target_speed, p_stage);
@@ -383,12 +417,21 @@ static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
             x_guess[1] = p_stage[1];
             x_guess[2] = p_stage[2];
             x_guess[3] = target_speed;
-            x_guess[4] = 0.0;
+            x_guess[4] = delta_guess[k];
         }
         ocp_nlp_out_set(config, dims, out, in, k, "x", x_guess);
         if (k < N_HORIZON)
         {
-            ocp_nlp_out_set(config, dims, out, in, k, "u", (double *) u_guess);
+            u_buf[0] = u_guess[0];
+            double rate = u_guess[1];
+            if (dt > 1e-9)
+            {
+                rate = (delta_guess[k + 1] - delta_guess[k]) / dt;
+                if (rate < delta_rate_min) rate = delta_rate_min;
+                if (rate > delta_rate_max) rate = delta_rate_max;
+            }
+            u_buf[1] = rate;
+            ocp_nlp_out_set(config, dims, out, in, k, "u", u_buf);
         }
     }
 }
@@ -437,11 +480,11 @@ int main(int argc, char **argv)
     void *nlp_opts = @MODEL_NAME@_acados_get_nlp_opts(solver_capsule);
 
     const double dt = @DT@;
-    const double wheelbase = 0.33;
+    const double wheelbase = @WHEELBASE@;
     const double v_min = 0.1;
     const double v_max = 12.0;
-    const double delta_min = -0.50;
-    const double delta_max = 0.50;
+    const double delta_max = @DELTA_MAX@;
+    const double delta_min = @DELTA_MIN@;
     const int stride_hint = (int) fmax(1.0, llround(target_speed * dt / fmax(track.avg_ds, 1e-6)));
 
     double xcurrent[NX] = {track.x[0], track.y[0], track.psi[0], target_speed, 0.0};
@@ -463,7 +506,7 @@ int main(int argc, char **argv)
     double ref_s = track.s[0];
     double last_applied_u[NU] = {0.0, 0.0};
 
-    seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, xcurrent, last_applied_u);
+    seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, wheelbase, delta_min, delta_max, xcurrent, last_applied_u);
     for (int step = 0; step < steps; ++step)
     {
         ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, 0, "x", xcurrent);
@@ -538,7 +581,7 @@ int main(int argc, char **argv)
         }
         else
         {
-            seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, xcurrent, last_applied_u);
+            seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, wheelbase, delta_min, delta_max, xcurrent, last_applied_u);
         }
         times[step] = elapsed_ms;
 
