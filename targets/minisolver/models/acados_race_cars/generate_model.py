@@ -12,7 +12,6 @@ sys.path.insert(0, str(ROOT))
 from targets.minisolver.models.common import (
     acados_repo_dir,
     ensure_minisolver_python_path,
-    ppoly_expr,
 )
 
 
@@ -56,7 +55,10 @@ if __name__ == "__main__":
 
     s_samples, kappa_samples = load_track()
     spline = make_interp_spline(s_samples, kappa_samples, k=3)
-    kappa = ppoly_expr(s, PPoly.from_spline(spline))
+    kappa_ppoly = PPoly.from_spline(spline)
+    kappa_breaks = kappa_ppoly.x.tolist()
+    kappa_coeffs = [kappa_ppoly.c[:, i].tolist() for i in range(kappa_ppoly.c.shape[1])]
+    kappa = model.ppoly("race_kappa", s, kappa_breaks, kappa_coeffs)
 
     m = 0.043
     c1 = 0.5
@@ -87,16 +89,18 @@ if __name__ == "__main__":
         diff = control - u_ref[i]
         model.minimize(sp.Rational(1, 2) * w_u[i] * diff * diff)
 
-    model.subject_to(along <= 4.0)
-    model.subject_to(along >= -4.0)
-    model.subject_to(alat <= 4.0)
-    model.subject_to(alat >= -4.0)
-    model.subject_to(n <= 0.12)
-    model.subject_to(n >= -0.12)
-    model.subject_to(throttle <= 1.0)
-    model.subject_to(throttle >= -1.0)
-    model.subject_to(delta <= 0.40)
-    model.subject_to(delta >= -0.40)
+    # Match official benchmark's soft-constraint configuration:
+    # first 10 bounds are L1-soft with weight=100; input-rate bounds are hard.
+    model.subject_to(along <= 4.0, weight=100.0, loss="L1")
+    model.subject_to(along >= -4.0, weight=100.0, loss="L1")
+    model.subject_to(alat <= 4.0, weight=100.0, loss="L1")
+    model.subject_to(alat >= -4.0, weight=100.0, loss="L1")
+    model.subject_to(n <= 0.12, weight=100.0, loss="L1")
+    model.subject_to(n >= -0.12, weight=100.0, loss="L1")
+    model.subject_to(throttle <= 1.0, weight=100.0, loss="L1")
+    model.subject_to(throttle >= -1.0, weight=100.0, loss="L1")
+    model.subject_to(delta <= 0.40, weight=100.0, loss="L1")
+    model.subject_to(delta >= -0.40, weight=100.0, loss="L1")
     model.subject_to(der_throttle <= 10.0)
     model.subject_to(der_throttle >= -10.0)
     model.subject_to(der_delta <= 2.0)
@@ -104,5 +108,5 @@ if __name__ == "__main__":
 
     output_dir = Path(__file__).resolve().parents[2] / "generated"
     print("Generating C++ model header from bspline-expanded curvature...", flush=True)
-    model.generate(str(output_dir), use_fused_riccati=False)
+    model.generate(str(output_dir), use_fused_riccati=False, dynamics_mode="continuous_rk")
     print(f"Generated RaceCarsModel in {output_dir}")

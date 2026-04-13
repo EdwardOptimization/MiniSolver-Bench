@@ -172,6 +172,8 @@ def generate_native_model(case_name: str, minisolver_source_dir: Path, acados_re
     script_dir = ROOT / "targets" / "minisolver" / "models"
     script_map = {
         "pendulum_on_cart": script_dir / "acados_pendulum" / "generate_model.py",
+        "race_cars": script_dir / "acados_race_cars" / "generate_model.py",
+        "quadrotor_nav": script_dir / "acados_quadrotor_nav" / "generate_model.py",
     }
     if case_name not in script_map:
         return

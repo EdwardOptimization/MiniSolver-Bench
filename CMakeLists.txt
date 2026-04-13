@@ -52,32 +52,8 @@ if(MINISOLVER_SOURCE_DIR)
         list(APPEND MINISOLVER_BENCH_DEFINES MINISOLVER_CASE_PENDULUM_ON_CART=1)
     elseif(MINISOLVER_CASE STREQUAL "race_cars")
         list(APPEND MINISOLVER_BENCH_DEFINES MINISOLVER_CASE_RACE_CARS=1)
-        set(RACE_GENERATED_DIR "${ACADOS_OUTPUT_ROOT}/race_cars/generated")
-        if(NOT EXISTS "${RACE_GENERATED_DIR}/Spatialbicycle_model_model/Spatialbicycle_model_expl_vde_forw.c")
-            message(FATAL_ERROR "Missing race_cars generated model assets under ${RACE_GENERATED_DIR}")
-        endif()
-        list(APPEND MINISOLVER_BENCH_SOURCES
-            "${RACE_GENERATED_DIR}/Spatialbicycle_model_model/Spatialbicycle_model_expl_vde_forw.c"
-            "${RACE_GENERATED_DIR}/Spatialbicycle_model_constraints/Spatialbicycle_model_constr_h_fun_jac_uxt_zt.c"
-        )
-        list(APPEND MINISOLVER_BENCH_INCLUDES
-            "${RACE_GENERATED_DIR}/Spatialbicycle_model_model"
-            "${RACE_GENERATED_DIR}/Spatialbicycle_model_constraints"
-        )
     elseif(MINISOLVER_CASE STREQUAL "quadrotor_nav")
         list(APPEND MINISOLVER_BENCH_DEFINES MINISOLVER_CASE_QUADROTOR_NAV=1)
-        set(QUAD_GENERATED_DIR "${ACADOS_OUTPUT_ROOT}/quadrotor_nav/generated")
-        if(NOT EXISTS "${QUAD_GENERATED_DIR}/drone_FrenSer_model/drone_FrenSer_expl_vde_forw.c")
-            message(FATAL_ERROR "Missing quadrotor_nav generated model assets under ${QUAD_GENERATED_DIR}")
-        endif()
-        list(APPEND MINISOLVER_BENCH_SOURCES
-            "${QUAD_GENERATED_DIR}/drone_FrenSer_model/drone_FrenSer_expl_vde_forw.c"
-            "${QUAD_GENERATED_DIR}/drone_FrenSer_constraints/drone_FrenSer_constr_h_fun_jac_uxt_zt.c"
-        )
-        list(APPEND MINISOLVER_BENCH_INCLUDES
-            "${QUAD_GENERATED_DIR}/drone_FrenSer_model"
-            "${QUAD_GENERATED_DIR}/drone_FrenSer_constraints"
-        )
     elseif(MINISOLVER_CASE STREQUAL "chain_mass")
         list(APPEND MINISOLVER_BENCH_DEFINES MINISOLVER_CASE_CHAIN_MASS=1)
     else()

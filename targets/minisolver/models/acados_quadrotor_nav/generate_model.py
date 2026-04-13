@@ -13,7 +13,6 @@ sys.path.insert(0, str(ROOT))
 from targets.minisolver.models.common import (
     acados_repo_dir,
     ensure_minisolver_python_path,
-    ppoly_derivative_expr,
 )
 
 
@@ -92,20 +91,31 @@ if __name__ == "__main__":
     spline_y = PPoly.from_spline(make_interp_spline(s_samples, y_samples, k=5))
     spline_z = PPoly.from_spline(make_interp_spline(s_samples, z_samples, k=5))
 
+    spline_x_breaks = spline_x.x.tolist()
+    spline_x_coeffs = [spline_x.c[:, i].tolist() for i in range(spline_x.c.shape[1])]
+    spline_y_breaks = spline_y.x.tolist()
+    spline_y_coeffs = [spline_y.c[:, i].tolist() for i in range(spline_y.c.shape[1])]
+    spline_z_breaks = spline_z.x.tolist()
+    spline_z_coeffs = [spline_z.c[:, i].tolist() for i in range(spline_z.c.shape[1])]
+
+    track_x = model.ppoly("quad_track_x", s, spline_x_breaks, spline_x_coeffs)
+    track_y = model.ppoly("quad_track_y", s, spline_y_breaks, spline_y_coeffs)
+    track_z = model.ppoly("quad_track_z", s, spline_z_breaks, spline_z_coeffs)
+
     gamma1 = sp.Matrix([
-        ppoly_derivative_expr(s, spline_x, 1),
-        ppoly_derivative_expr(s, spline_y, 1),
-        ppoly_derivative_expr(s, spline_z, 1),
+        sp.diff(track_x, s),
+        sp.diff(track_y, s),
+        sp.diff(track_z, s),
     ])
     gamma2 = sp.Matrix([
-        ppoly_derivative_expr(s, spline_x, 2),
-        ppoly_derivative_expr(s, spline_y, 2),
-        ppoly_derivative_expr(s, spline_z, 2),
+        sp.diff(track_x, s, 2),
+        sp.diff(track_y, s, 2),
+        sp.diff(track_z, s, 2),
     ])
     gamma3 = sp.Matrix([
-        ppoly_derivative_expr(s, spline_x, 3),
-        ppoly_derivative_expr(s, spline_y, 3),
-        ppoly_derivative_expr(s, spline_z, 3),
+        sp.diff(track_x, s, 3),
+        sp.diff(track_y, s, 3),
+        sp.diff(track_z, s, 3),
     ])
 
     kap = _Norm3(gamma2[0], gamma2[1], gamma2[2])
@@ -209,6 +219,13 @@ if __name__ == "__main__":
     model.subject_to(kap * n <= 1.0)
 
     output_dir = Path(__file__).resolve().parents[2] / "generated"
-    print("Generating C++ model header from bspline-expanded track geometry...", flush=True)
-    model.generate(str(output_dir), use_fused_riccati=False)
+    print("Generating C++ model header from spline track geometry...", flush=True)
+    # The official acados example uses Gauss-Newton (no constraint Hessian). Computing constraint Hessians
+    # can be very expensive for this model, so skip them during codegen.
+    model.generate(
+        str(output_dir),
+        use_fused_riccati=False,
+        dynamics_mode="continuous_rk",
+        include_constraint_hessian=False,
+    )
     print(f"Generated QuadrotorNavModel in {output_dir}")
