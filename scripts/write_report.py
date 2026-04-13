@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -163,9 +164,22 @@ def main() -> int:
     nmpc_bench_commit = try_run_git(["rev-parse", "HEAD"], ROOT) or "uncommitted-workspace"
     acados_dir = ROOT / "third_party" / "acados"
     acados_commit = try_run_git(["rev-parse", "HEAD"], acados_dir) or "unknown"
-    minisolver_dir = ROOT.parent / "MiniSolver"
-    minisolver_branch = try_run_git(["branch", "--show-current"], minisolver_dir) or "unknown"
-    minisolver_commit = try_run_git(["rev-parse", "HEAD"], minisolver_dir) or "unknown"
+
+    minisolver_dir = None
+    for candidate in (ROOT / "third_party" / "MiniSolver", ROOT.parent / "MiniSolver"):
+        if (candidate / "CMakeLists.txt").exists() or (candidate / ".git").exists():
+            minisolver_dir = candidate
+            break
+
+    minisolver_label = "unknown"
+    minisolver_branch = "unknown"
+    minisolver_commit = "unknown"
+    if minisolver_dir is not None:
+        minisolver_label = os.path.relpath(minisolver_dir, ROOT)
+        minisolver_branch = try_run_git(["branch", "--show-current"], minisolver_dir) or "detached"
+        if minisolver_branch == "":
+            minisolver_branch = "detached"
+        minisolver_commit = try_run_git(["rev-parse", "HEAD"], minisolver_dir) or "unknown"
 
     lines = [
         "# Latest Benchmark Report",
@@ -176,9 +190,8 @@ def main() -> int:
         "",
         f"- `nmpc-bench`: `{nmpc_bench_commit}`",
         f"- `acados`: `third_party/acados` at `{acados_commit}`",
-        f"- `MiniSolver`: local checkout `{minisolver_dir}`",
+        f"- `MiniSolver`: `{minisolver_label}` at `{minisolver_commit}`",
         f"  - branch: `{minisolver_branch}`",
-        f"  - commit: `{minisolver_commit}`",
         "",
         "## Summary",
         "",

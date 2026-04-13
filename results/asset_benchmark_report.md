@@ -20,9 +20,9 @@ These are the cases that currently behave like usable benchmark baselines under 
 | `nonlinear_mpcc_fssim_following` | `acados` | 1200 | 0.999 | 1.94643 | 2.65358 | 2.85423 | 29.5741 | 68.0295 |
 | `nonlinear_mpcc_fssim_following` | `casadi` | 1200 | 0.957 | 0.633244 | 270.268 | 4605.41 | 0.79742 | 0.036368 |
 | `nonlinear_mpcc_fssim_following` | `clarabel` | - | - | - | - | - | - | - |
-| `nonlinear_mpcc_porto_following` | `minisolver` | 600 | 1 | 0.120912 | 0.13855 | 2.19795 | 0.00208937 | 0 |
+| `nonlinear_mpcc_porto_following` | `minisolver` | 600 | 1 | 0.115451 | 0.143681 | 2.04868 | 0.00208937 | 0 |
 | `nonlinear_mpcc_porto_following` | `acados` | 600 | 0.998 | 0.626061 | 1.47274 | 1.82751 | 2.56204 | 9.40125 |
-| `nonlinear_mpcc_porto_following` | `casadi` | 600 | 0.687 | 0.743712 | 3210.68 | 6476.75 | 2.64836 | 11.6788 |
+| `nonlinear_mpcc_porto_following` | `casadi` | 600 | 0.8 | 0.510582 | 3112.7 | 4977.53 | 1.87096 | 13.7211 |
 | `nonlinear_mpcc_porto_following` | `clarabel` | - | - | - | - | - | - | - |
 
 ## Stress Case
@@ -31,9 +31,9 @@ These are the cases that currently behave like usable benchmark baselines under 
 
 | Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| `mpcc_track_following` | `minisolver` | 400 | 0 | 2.07887 | 3.22457 | 4.07099 | 23.3636 | 45.1929 |
-| `mpcc_track_following` | `acados` | 400 | 0.998 | 0.464405 | 0.919534 | 1.13765 | 0.887 | 2.15037 |
-| `mpcc_track_following` | `casadi` | 400 | 0.25 | 912.077 | 3266.86 | 4679.27 | 1.52096 | 5.11075 |
+| `mpcc_track_following` | `minisolver` | 400 | 1 | 0.106131 | 0.142878 | 0.19018 | 0.0100655 | 0 |
+| `mpcc_track_following` | `acados` | 400 | 0.998 | 0.579828 | 0.822239 | 1.16371 | 1.15544 | 3.99598 |
+| `mpcc_track_following` | `casadi` | 400 | 0.637 | 1.32756 | 2476.24 | 4258.24 | 1.00218 | 4.2645 |
 | `mpcc_track_following` | `clarabel` | - | - | - | - | - | - | - |
 
 ## Notes
