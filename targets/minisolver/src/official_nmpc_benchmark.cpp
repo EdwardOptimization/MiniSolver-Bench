@@ -19,19 +19,11 @@
 #include "pendulummodel.h"
 
 #if defined(MINISOLVER_CASE_RACE_CARS)
-extern "C" {
-typedef double real_t;
-#include "Spatialbicycle_model_model.h"
-#include "Spatialbicycle_model_constraints.h"
-}
+#include "racecarsmodel.h"
 #endif
 
 #if defined(MINISOLVER_CASE_QUADROTOR_NAV)
-extern "C" {
-typedef double real_t;
-#include "drone_FrenSer_model.h"
-#include "drone_FrenSer_constraints.h"
-}
+#include "quadrotornavmodel.h"
 #endif
 
 using namespace minisolver;
@@ -243,133 +235,6 @@ void print_csv_line(std::ofstream& out, const Ts&... values) {
     out << '\n';
 }
 
-struct CasadiWorkspace {
-    std::vector<const double*> arg;
-    std::vector<double*> res;
-    std::vector<int> iw;
-    std::vector<double> w;
-
-    explicit CasadiWorkspace(int (*work_fn)(int*, int*, int*, int*)) {
-        int sz_arg = 0;
-        int sz_res = 0;
-        int sz_iw = 0;
-        int sz_w = 0;
-        work_fn(&sz_arg, &sz_res, &sz_iw, &sz_w);
-        arg.resize(static_cast<size_t>(sz_arg));
-        res.resize(static_cast<size_t>(sz_res));
-        iw.resize(static_cast<size_t>(sz_iw));
-        w.resize(static_cast<size_t>(sz_w));
-    }
-};
-
-int casadi_nz_count(const int* sparsity) {
-    return sparsity[2 + sparsity[1]];
-}
-
-template <int R, int C>
-void decompress_csc(const int* sparsity, const double* nz_values, MSMat<double, R, C>& dense) {
-    static_assert(R >= 0 && C >= 0, "invalid matrix size");
-    set_zero_matrix(dense);
-    const int rows = sparsity[0];
-    const int cols = sparsity[1];
-    const int* col_ptr = sparsity + 2;
-    const int* row_ind = col_ptr + cols + 1;
-    for (int col = 0; col < cols; ++col) {
-        for (int k = col_ptr[col]; k < col_ptr[col + 1]; ++k) {
-            dense(row_ind[k], col) = nz_values[k];
-        }
-    }
-}
-
-template <int N>
-std::array<double, N * N> identity_seed() {
-    std::array<double, N * N> seed{};
-    for (int i = 0; i < N; ++i) {
-        seed[static_cast<size_t>(i + N * i)] = 1.0;
-    }
-    return seed;
-}
-
-using CasadiFun = int (*)(const double**, double**, int*, double*, void*);
-using CasadiWork = int (*)(int*, int*, int*, int*);
-using CasadiSparsity = const int* (*)(int);
-
-template <int NX, int NU, CasadiFun VDE_FUN, CasadiWork VDE_WORK, CasadiSparsity VDE_SPARSITY_OUT>
-struct ExplicitGeneratedContinuousApi {
-    static void eval(
-        const MSVec<double, NX>& x,
-        const MSVec<double, NU>& u,
-        MSVec<double, NX>& f,
-        MSMat<double, NX, NX>& fx,
-        MSMat<double, NX, NU>& fu) {
-        static thread_local CasadiWorkspace workspace(VDE_WORK);
-        static thread_local const std::array<double, NX * NX> seed_x = identity_seed<NX>();
-        static thread_local const std::array<double, NX * NU> seed_u = {};
-        static thread_local const int* fx_sparsity = VDE_SPARSITY_OUT(1);
-        static thread_local const int* fu_sparsity = VDE_SPARSITY_OUT(2);
-        static thread_local std::vector<double> fx_nz(static_cast<size_t>(casadi_nz_count(fx_sparsity)));
-        static thread_local std::vector<double> fu_nz(static_cast<size_t>(casadi_nz_count(fu_sparsity)));
-        std::array<double, NX> f_out{};
-
-        workspace.arg[0] = raw_ptr(x);
-        workspace.arg[1] = seed_x.data();
-        workspace.arg[2] = seed_u.data();
-        workspace.arg[3] = raw_ptr(u);
-        workspace.arg[4] = nullptr;
-        workspace.res[0] = f_out.data();
-        workspace.res[1] = fx_nz.data();
-        workspace.res[2] = fu_nz.data();
-        VDE_FUN(workspace.arg.data(), workspace.res.data(), workspace.iw.data(), workspace.w.data(), 0);
-
-        for (int i = 0; i < NX; ++i) {
-            f(i) = f_out[static_cast<size_t>(i)];
-        }
-        decompress_csc(fx_sparsity, fx_nz.data(), fx);
-        decompress_csc(fu_sparsity, fu_nz.data(), fu);
-    }
-};
-
-template <int NG, int NX, int NU, CasadiFun CONSTR_FUN, CasadiWork CONSTR_WORK, CasadiSparsity CONSTR_SPARSITY_OUT>
-struct GeneratedConstraintApi {
-    static void eval(
-        const MSVec<double, NX>& x,
-        const MSVec<double, NU>& u,
-        MSVec<double, NG>& h,
-        MSMat<double, NG, NX>& C,
-        MSMat<double, NG, NU>& D) {
-        static thread_local CasadiWorkspace workspace(CONSTR_WORK);
-        static thread_local const int* jac_sparsity = CONSTR_SPARSITY_OUT(1);
-        static thread_local std::vector<double> jac_nz(static_cast<size_t>(casadi_nz_count(jac_sparsity)));
-        static thread_local MSMat<double, NX + NU, NG> jac_uxt;
-        std::array<double, NG> h_out{};
-
-        workspace.arg[0] = raw_ptr(x);
-        workspace.arg[1] = raw_ptr(u);
-        workspace.arg[2] = nullptr;
-        workspace.arg[3] = nullptr;
-        workspace.res[0] = h_out.data();
-        workspace.res[1] = jac_nz.data();
-        workspace.res[2] = nullptr;
-        CONSTR_FUN(workspace.arg.data(), workspace.res.data(), workspace.iw.data(), workspace.w.data(), 0);
-
-        for (int i = 0; i < NG; ++i) {
-            h(i) = h_out[static_cast<size_t>(i)];
-        }
-
-        decompress_csc(jac_sparsity, jac_nz.data(), jac_uxt);
-        set_zero_matrix(C);
-        set_zero_matrix(D);
-        for (int g = 0; g < NG; ++g) {
-            for (int j = 0; j < NU; ++j) {
-                D(g, j) = jac_uxt(j, g);
-            }
-            for (int j = 0; j < NX; ++j) {
-                C(g, j) = jac_uxt(NU + j, g);
-            }
-        }
-    }
-};
-
 template <int NX, int NU, int NP, typename EvalFn>
 MSVec<double, NX> rk4_step(
     const MSVec<double, NX>& x,
@@ -429,331 +294,10 @@ MSVec<double, NX> rk4_step(
     return x + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0);
 }
 
-#if defined(MINISOLVER_CASE_RACE_CARS)
-using RaceContinuousApi = ExplicitGeneratedContinuousApi<
-    6,
-    2,
-    &Spatialbicycle_model_expl_vde_forw,
-    &Spatialbicycle_model_expl_vde_forw_work,
-    &Spatialbicycle_model_expl_vde_forw_sparsity_out>;
-using RaceConstraintApi = GeneratedConstraintApi<
-    5,
-    6,
-    2,
-    &Spatialbicycle_model_constr_h_fun_jac_uxt_zt,
-    &Spatialbicycle_model_constr_h_fun_jac_uxt_zt_work,
-    &Spatialbicycle_model_constr_h_fun_jac_uxt_zt_sparsity_out>;
-
-struct RaceCarsModel {
-    static constexpr int NX = 6;
-    static constexpr int NU = 2;
-    static constexpr int NC = 14;
-    static constexpr int NP = 16;
-
-    static constexpr std::array<const char*, NX> state_names = {"s", "n", "alpha", "v", "D", "delta"};
-    static constexpr std::array<const char*, NU> control_names = {"derD", "derDelta"};
-    static constexpr std::array<const char*, NP> param_names = filled_names<NP>("param");
-    static constexpr std::array<double, NC> constraint_weights = {
-        100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
-        100.0, 100.0, 100.0, 0.0, 0.0, 0.0, 0.0,
-    };
-    static constexpr std::array<int, NC> constraint_types = {
-        1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 0, 0, 0, 0,
-    };
-
-    static constexpr double along_min = -4.0;
-    static constexpr double along_max = 4.0;
-    static constexpr double alat_min = -4.0;
-    static constexpr double alat_max = 4.0;
-    static constexpr double n_min = -0.12;
-    static constexpr double n_max = 0.12;
-    static constexpr double throttle_min = -1.0;
-    static constexpr double throttle_max = 1.0;
-    static constexpr double delta_min = -0.40;
-    static constexpr double delta_max = 0.40;
-    static constexpr double dthrottle_min = -10.0;
-    static constexpr double dthrottle_max = 10.0;
-    static constexpr double ddelta_min = -2.0;
-    static constexpr double ddelta_max = 2.0;
-
-    static constexpr int P_XREF = 0;
-    static constexpr int P_UREF = P_XREF + NX;
-    static constexpr int P_WX = P_UREF + NU;
-    static constexpr int P_WU = P_WX + NX;
-
-    template <typename T>
-    static MSVec<T, NX> dynamics_continuous(
-        const MSVec<T, NX>& x,
-        const MSVec<T, NU>& u,
-        const MSVec<T, NP>& p) {
-        static_assert(std::is_same_v<T, double>, "RaceCarsModel only supports double evaluation");
-        MSVec<double, NX> f;
-        MSMat<double, NX, NX> fx;
-        MSMat<double, NX, NU> fu;
-        RaceContinuousApi::eval(x, u, f, fx, fu);
-        (void)p;
-        return f;
-    }
-
-    template <typename T>
-    static MSVec<T, NX> integrate(
-        const MSVec<T, NX>& x,
-        const MSVec<T, NU>& u,
-        const MSVec<T, NP>& p,
-        double dt,
-        IntegratorType /*type*/) {
-        static_assert(std::is_same_v<T, double>, "RaceCarsModel only supports double evaluation");
-        auto eval = [](const auto& xv, const auto& uv, const auto& /*pv*/, auto& f, auto& fx, auto& fu) {
-            RaceContinuousApi::eval(xv, uv, f, fx, fu);
-        };
-        return rk4_step<NX, NU, NP>(x, u, p, dt, eval, nullptr, nullptr);
-    }
-
-    template <typename T>
-    static void compute_dynamics(KnotPoint<T, NX, NU, NC, NP>& kp, IntegratorType /*type*/, double dt) {
-        static_assert(std::is_same_v<T, double>, "RaceCarsModel only supports double evaluation");
-        auto eval = [](const auto& xv, const auto& uv, const auto& /*pv*/, auto& f, auto& fx, auto& fu) {
-            RaceContinuousApi::eval(xv, uv, f, fx, fu);
-        };
-        kp.f_resid = rk4_step<NX, NU, NP>(kp.x, kp.u, kp.p, dt, eval, &kp.A, &kp.B);
-    }
-
-    template <typename T>
-    static void compute_constraints(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        static_assert(std::is_same_v<T, double>, "RaceCarsModel only supports double evaluation");
-        MSVec<double, 5> h;
-        MSMat<double, 5, NX> C_h;
-        MSMat<double, 5, NU> D_h;
-        RaceConstraintApi::eval(kp.x, kp.u, h, C_h, D_h);
-
-        kp.g_val(0) = h(0) - along_max;
-        kp.g_val(1) = along_min - h(0);
-        kp.g_val(2) = h(1) - alat_max;
-        kp.g_val(3) = alat_min - h(1);
-        kp.g_val(4) = h(2) - n_max;
-        kp.g_val(5) = n_min - h(2);
-        kp.g_val(6) = h(3) - throttle_max;
-        kp.g_val(7) = throttle_min - h(3);
-        kp.g_val(8) = h(4) - delta_max;
-        kp.g_val(9) = delta_min - h(4);
-        kp.g_val(10) = kp.u(0) - dthrottle_max;
-        kp.g_val(11) = dthrottle_min - kp.u(0);
-        kp.g_val(12) = kp.u(1) - ddelta_max;
-        kp.g_val(13) = ddelta_min - kp.u(1);
-
-        set_zero_matrix(kp.C);
-        set_zero_matrix(kp.D);
-        for (int j = 0; j < NX; ++j) {
-            kp.C(0, j) = C_h(0, j);
-            kp.C(1, j) = -C_h(0, j);
-            kp.C(2, j) = C_h(1, j);
-            kp.C(3, j) = -C_h(1, j);
-            kp.C(4, j) = C_h(2, j);
-            kp.C(5, j) = -C_h(2, j);
-            kp.C(6, j) = C_h(3, j);
-            kp.C(7, j) = -C_h(3, j);
-            kp.C(8, j) = C_h(4, j);
-            kp.C(9, j) = -C_h(4, j);
-        }
-        for (int j = 0; j < NU; ++j) {
-            kp.D(0, j) = D_h(0, j);
-            kp.D(1, j) = -D_h(0, j);
-            kp.D(2, j) = D_h(1, j);
-            kp.D(3, j) = -D_h(1, j);
-            kp.D(4, j) = D_h(2, j);
-            kp.D(5, j) = -D_h(2, j);
-            kp.D(6, j) = D_h(3, j);
-            kp.D(7, j) = -D_h(3, j);
-            kp.D(8, j) = D_h(4, j);
-            kp.D(9, j) = -D_h(4, j);
-        }
-        kp.D(10, 0) = 1.0;
-        kp.D(11, 0) = -1.0;
-        kp.D(12, 1) = 1.0;
-        kp.D(13, 1) = -1.0;
-    }
-
-    template <typename T>
-    static void compute_cost_exact(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        static_assert(std::is_same_v<T, double>, "RaceCarsModel only supports double evaluation");
-        kp.cost = 0.0;
-        set_zero_vector(kp.q);
-        set_zero_vector(kp.r);
-        set_zero_matrix(kp.Q);
-        set_zero_matrix(kp.R);
-        set_zero_matrix(kp.H);
-
-        for (int i = 0; i < NX; ++i) {
-            const double ref = kp.p(P_XREF + i);
-            const double weight = kp.p(P_WX + i);
-            const double diff = kp.x(i) - ref;
-            kp.cost += 0.5 * weight * diff * diff;
-            kp.q(i) = weight * diff;
-            kp.Q(i, i) = weight;
-        }
-        for (int i = 0; i < NU; ++i) {
-            const double ref = kp.p(P_UREF + i);
-            const double weight = kp.p(P_WU + i);
-            const double diff = kp.u(i) - ref;
-            kp.cost += 0.5 * weight * diff * diff;
-            kp.r(i) = weight * diff;
-            kp.R(i, i) = weight;
-        }
-    }
-
-    template <typename T>
-    static void compute_cost_gn(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        compute_cost_exact(kp);
-    }
-
-    template <typename T>
-    static void compute_cost(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        compute_cost_exact(kp);
-    }
-
-    template <typename T>
-    static void compute(KnotPoint<T, NX, NU, NC, NP>& kp, IntegratorType type, double dt) {
-        compute_cost(kp);
-        compute_dynamics(kp, type, dt);
-        compute_constraints(kp);
-    }
-};
-#endif
+// RaceCarsModel is generated via SymPy (see targets/minisolver/generated/racecarsmodel.h).
 
 #if defined(MINISOLVER_CASE_QUADROTOR_NAV)
-using QuadContinuousApi = ExplicitGeneratedContinuousApi<
-    20,
-    4,
-    &drone_FrenSer_expl_vde_forw,
-    &drone_FrenSer_expl_vde_forw_work,
-    &drone_FrenSer_expl_vde_forw_sparsity_out>;
-using QuadConstraintApi = GeneratedConstraintApi<
-    1,
-    20,
-    4,
-    &drone_FrenSer_constr_h_fun_jac_uxt_zt,
-    &drone_FrenSer_constr_h_fun_jac_uxt_zt_work,
-    &drone_FrenSer_constr_h_fun_jac_uxt_zt_sparsity_out>;
-
-struct QuadrotorNavModel {
-    static constexpr int NX = 20;
-    static constexpr int NU = 4;
-    static constexpr int NC = 1;
-    static constexpr int NP = 48;
-
-    static constexpr std::array<const char*, NX> state_names = {
-        "s", "n", "b",
-        "q1", "q2", "q3", "q4",
-        "sDot", "nDot", "bDot",
-        "wr", "wp", "wy",
-        "vx", "vy", "vz",
-        "ohm1", "ohm2", "ohm3", "ohm4",
-    };
-    static constexpr std::array<const char*, NU> control_names = {"alpha1", "alpha2", "alpha3", "alpha4"};
-    static constexpr std::array<const char*, NP> param_names = filled_names<NP>("param");
-    static constexpr std::array<double, NC> constraint_weights = {0.0};
-    static constexpr std::array<int, NC> constraint_types = {0};
-
-    static constexpr int P_XREF = 0;
-    static constexpr int P_UREF = P_XREF + NX;
-    static constexpr int P_WX = P_UREF + NU;
-    static constexpr int P_WU = P_WX + NX;
-
-    template <typename T>
-    static MSVec<T, NX> dynamics_continuous(
-        const MSVec<T, NX>& x,
-        const MSVec<T, NU>& u,
-        const MSVec<T, NP>& p) {
-        static_assert(std::is_same_v<T, double>, "QuadrotorNavModel only supports double evaluation");
-        MSVec<double, NX> f;
-        MSMat<double, NX, NX> fx;
-        MSMat<double, NX, NU> fu;
-        QuadContinuousApi::eval(x, u, f, fx, fu);
-        (void)p;
-        return f;
-    }
-
-    template <typename T>
-    static MSVec<T, NX> integrate(
-        const MSVec<T, NX>& x,
-        const MSVec<T, NU>& u,
-        const MSVec<T, NP>& p,
-        double dt,
-        IntegratorType /*type*/) {
-        static_assert(std::is_same_v<T, double>, "QuadrotorNavModel only supports double evaluation");
-        auto eval = [](const auto& xv, const auto& uv, const auto& /*pv*/, auto& f, auto& fx, auto& fu) {
-            QuadContinuousApi::eval(xv, uv, f, fx, fu);
-        };
-        return rk4_step<NX, NU, NP>(x, u, p, dt, eval, nullptr, nullptr);
-    }
-
-    template <typename T>
-    static void compute_dynamics(KnotPoint<T, NX, NU, NC, NP>& kp, IntegratorType /*type*/, double dt) {
-        static_assert(std::is_same_v<T, double>, "QuadrotorNavModel only supports double evaluation");
-        auto eval = [](const auto& xv, const auto& uv, const auto& /*pv*/, auto& f, auto& fx, auto& fu) {
-            QuadContinuousApi::eval(xv, uv, f, fx, fu);
-        };
-        kp.f_resid = rk4_step<NX, NU, NP>(kp.x, kp.u, kp.p, dt, eval, &kp.A, &kp.B);
-    }
-
-    template <typename T>
-    static void compute_constraints(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        static_assert(std::is_same_v<T, double>, "QuadrotorNavModel only supports double evaluation");
-        MSVec<double, 1> h;
-        MSMat<double, 1, NX> C_h;
-        MSMat<double, 1, NU> D_h;
-        QuadConstraintApi::eval(kp.x, kp.u, h, C_h, D_h);
-        kp.g_val(0) = h(0) - 1.0;
-        kp.C.row(0) = C_h.row(0);
-        kp.D.row(0) = D_h.row(0);
-    }
-
-    template <typename T>
-    static void compute_cost_exact(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        static_assert(std::is_same_v<T, double>, "QuadrotorNavModel only supports double evaluation");
-        kp.cost = 0.0;
-        set_zero_vector(kp.q);
-        set_zero_vector(kp.r);
-        set_zero_matrix(kp.Q);
-        set_zero_matrix(kp.R);
-        set_zero_matrix(kp.H);
-
-        for (int i = 0; i < NX; ++i) {
-            const double ref = kp.p(P_XREF + i);
-            const double weight = kp.p(P_WX + i);
-            const double diff = kp.x(i) - ref;
-            kp.cost += 0.5 * weight * diff * diff;
-            kp.q(i) = weight * diff;
-            kp.Q(i, i) = weight;
-        }
-        for (int i = 0; i < NU; ++i) {
-            const double ref = kp.p(P_UREF + i);
-            const double weight = kp.p(P_WU + i);
-            const double diff = kp.u(i) - ref;
-            kp.cost += 0.5 * weight * diff * diff;
-            kp.r(i) = weight * diff;
-            kp.R(i, i) = weight;
-        }
-    }
-
-    template <typename T>
-    static void compute_cost_gn(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        compute_cost_exact(kp);
-    }
-
-    template <typename T>
-    static void compute_cost(KnotPoint<T, NX, NU, NC, NP>& kp) {
-        compute_cost_exact(kp);
-    }
-
-    template <typename T>
-    static void compute(KnotPoint<T, NX, NU, NC, NP>& kp, IntegratorType type, double dt) {
-        compute_cost(kp);
-        compute_dynamics(kp, type, dt);
-        compute_constraints(kp);
-    }
-};
+// QuadrotorNavModel is generated via SymPy (see targets/minisolver/generated/quadrotornavmodel.h).
 #endif
 
 #if defined(MINISOLVER_CASE_CHAIN_MASS)
@@ -991,6 +535,9 @@ struct PendulumStep {
     SolverStatus status = SolverStatus::UNSOLVED;
     int iterations = 0;
     double time_ms = 0.0;
+    double deriv_ms = 0.0;
+    double riccati_ms = 0.0;
+    double line_search_ms = 0.0;
     double force = 0.0;
     double total_cost_value = 0.0;
     double max_constraint_violation_value = 0.0;
@@ -1002,6 +549,9 @@ struct RaceStep {
     SolverStatus status = SolverStatus::UNSOLVED;
     int iterations = 0;
     double time_ms = 0.0;
+    double deriv_ms = 0.0;
+    double riccati_ms = 0.0;
+    double line_search_ms = 0.0;
     double total_cost_value = 0.0;
     double max_constraint_violation_value = 0.0;
     double s = 0.0;
@@ -1013,6 +563,9 @@ struct QuadStep {
     SolverStatus status = SolverStatus::UNSOLVED;
     int iterations = 0;
     double time_ms = 0.0;
+    double deriv_ms = 0.0;
+    double riccati_ms = 0.0;
+    double line_search_ms = 0.0;
     double total_cost_value = 0.0;
     double max_constraint_violation_value = 0.0;
     double abs_n = 0.0;
@@ -1024,6 +577,9 @@ struct ChainStep {
     SolverStatus status = SolverStatus::UNSOLVED;
     int iterations = 0;
     double time_ms = 0.0;
+    double deriv_ms = 0.0;
+    double riccati_ms = 0.0;
+    double line_search_ms = 0.0;
     double total_cost_value = 0.0;
     double max_constraint_violation_value = 0.0;
     double wall_dist = 0.0;
@@ -1119,6 +675,43 @@ void print_common_summary(
     std::cout << "summary   : " << summary_path << "\n";
 }
 
+template <typename Record>
+void print_profile_breakdown(const std::vector<Record>& results) {
+    if (results.empty()) {
+        return;
+    }
+
+    double total_ms = 0.0;
+    double deriv_ms = 0.0;
+    double riccati_ms = 0.0;
+    double line_search_ms = 0.0;
+    for (const auto& record : results) {
+        total_ms += record.time_ms;
+        deriv_ms += record.deriv_ms;
+        riccati_ms += record.riccati_ms;
+        line_search_ms += record.line_search_ms;
+    }
+
+    if (!(total_ms > 0.0)) {
+        return;
+    }
+
+    const double other_ms =
+        std::max(0.0, total_ms - (deriv_ms + riccati_ms + line_search_ms));
+
+    auto pct = [&](double value) { return 100.0 * value / total_ms; };
+
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "profile avg ms (Deriv / Riccati / LS / Other): "
+              << (deriv_ms / results.size()) << " / " << (riccati_ms / results.size()) << " / "
+              << (line_search_ms / results.size()) << " / " << (other_ms / results.size())
+              << "\n";
+    std::cout << std::setprecision(1);
+    std::cout << "profile share  (Deriv / Riccati / LS / Other): "
+              << pct(deriv_ms) << "% / " << pct(riccati_ms) << "% / " << pct(line_search_ms)
+              << "% / " << pct(other_ms) << "%\n";
+}
+
 void initialize_pendulum_solver(MiniSolver<PendulumModel, 80>& solver) {
     solver.set_initial_state("x", 0.0);
     solver.set_initial_state("theta", M_PI);
@@ -1139,6 +732,9 @@ PendulumStep run_pendulum_step(MiniSolver<PendulumModel, 80>& solver, int step) 
     const auto end = std::chrono::steady_clock::now();
     result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
     result.iterations = solver.get_iteration_count();
+    result.deriv_ms = solver.get_profile_time_ms("Derivatives");
+    result.riccati_ms = solver.get_profile_time_ms("Linear Solve");
+    result.line_search_ms = solver.get_profile_time_ms("Line Search");
     result.force = solver.get_control(0, 0);
     result.state = to_array<4>(solver.get_state(0));
     result.total_cost_value = total_cost(solver);
@@ -1148,7 +744,11 @@ PendulumStep run_pendulum_step(MiniSolver<PendulumModel, 80>& solver, int step) 
 
 std::vector<PendulumStep> run_pendulum_case(const Args& args) {
     SolverConfig config = make_solver_config();
+    // Match the official acados pendulum example ("as_rti"): one RTI-style iteration per control step.
     config.enable_rti = true;
+    // In RTI (single-iteration) mode, use a rollout trial point so the iterate remains dynamically
+    // consistent after the step. Otherwise postsolve can fail on large multiple-shooting defects.
+    config.enable_line_search_rollout = true;
     config.max_iters = 1;
     config.tol_con = 1e-2;
     config.tol_dual = 1e-2;
@@ -1187,6 +787,10 @@ std::vector<PendulumStep> run_pendulum_case(const Args& args) {
 
         shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
+        // In RTI mode we typically only take one iteration, so we must keep the multiple-shooting
+        // trajectory dynamically consistent; otherwise postsolve can mark the step INFEASIBLE due
+        // to large dynamics defects even when bounds are satisfied.
+        solver.rollout_dynamics();
         solver.reset(ResetOption::ALG_STATE);
     }
     return results;
@@ -1199,7 +803,7 @@ void write_pendulum_outputs(const Args& args, const std::vector<PendulumStep>& r
     std::filesystem::create_directories(csv_path.parent_path());
 
     std::ofstream out(csv_path);
-    out << "step,backend,status,time_ms,iterations,force,total_cost,max_constraint_violation,"
+    out << "step,backend,status,time_ms,deriv_ms,riccati_ms,line_search_ms,iterations,force,total_cost,max_constraint_violation,"
            "cart_x,pole_theta,cart_v,pole_omega\n";
     for (const auto& result : results) {
         print_csv_line(
@@ -1208,6 +812,9 @@ void write_pendulum_outputs(const Args& args, const std::vector<PendulumStep>& r
             kBackendTag,
             status_to_string(result.status),
             result.time_ms,
+            result.deriv_ms,
+            result.riccati_ms,
+            result.line_search_ms,
             result.iterations,
             result.force,
             result.total_cost_value,
@@ -1235,7 +842,7 @@ void write_pendulum_outputs(const Args& args, const std::vector<PendulumStep>& r
 
     std::ofstream summary(summary_path);
     summary << "case_name,backend,steps,success_rate,avg_iterations,median_ms,p95_ms,max_ms,"
-               "max_constraint_violation,final_theta_abs\n";
+               "max_constraint_violation,final_theta_abs,avg_deriv_ms,avg_riccati_ms,avg_line_search_ms\n";
     print_csv_line(
         summary,
         "pendulum_on_cart",
@@ -1247,13 +854,22 @@ void write_pendulum_outputs(const Args& args, const std::vector<PendulumStep>& r
         percentile(times, 0.95),
         times.empty() ? 0.0 : *std::max_element(times.begin(), times.end()),
         max_viol,
-        std::abs(final_theta));
+        std::abs(final_theta),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const PendulumStep& record) { return acc + record.deriv_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const PendulumStep& record) { return acc + record.riccati_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const PendulumStep& record) { return acc + record.line_search_ms; }) / results.size());
 
     print_common_summary("pendulum_on_cart", results, csv_path, summary_path);
+    print_profile_breakdown(results);
 }
 
 #if defined(MINISOLVER_CASE_RACE_CARS)
 void set_race_cost_parameters(MiniSolver<RaceCarsModel, 80>& solver, double s0) {
+    constexpr int P_XREF = 0;
+    constexpr int P_UREF = P_XREF + RaceCarsModel::NX;
+    constexpr int P_WX = P_UREF + RaceCarsModel::NU;
+    constexpr int P_WU = P_WX + RaceCarsModel::NX;
+
     const double unscale = static_cast<double>(race_cars_horizon) / race_cars_tf;
     const std::array<double, RaceCarsModel::NX> stage_wx = {
         unscale * 1e-1,
@@ -1283,18 +899,18 @@ void set_race_cost_parameters(MiniSolver<RaceCarsModel, 80>& solver, double s0) 
         const double sref_k = s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(N);
         std::array<double, RaceCarsModel::NX> xref = {sref_k, 0.0, 0.0, 0.0, 0.0, 0.0};
         std::array<double, RaceCarsModel::NU> uref = {0.0, 0.0};
-        set_stage_array_parameters(solver, k, RaceCarsModel::P_XREF, xref);
-        set_stage_array_parameters(solver, k, RaceCarsModel::P_UREF, uref);
-        set_stage_array_parameters(solver, k, RaceCarsModel::P_WX, stage_wx);
-        set_stage_array_parameters(solver, k, RaceCarsModel::P_WU, stage_wu);
+        set_stage_array_parameters(solver, k, P_XREF, xref);
+        set_stage_array_parameters(solver, k, P_UREF, uref);
+        set_stage_array_parameters(solver, k, P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, P_WU, stage_wu);
     }
 
     std::array<double, RaceCarsModel::NX> xref_terminal = {sref, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::array<double, RaceCarsModel::NU> uref_terminal = {0.0, 0.0};
-    set_stage_array_parameters(solver, N, RaceCarsModel::P_XREF, xref_terminal);
-    set_stage_array_parameters(solver, N, RaceCarsModel::P_UREF, uref_terminal);
-    set_stage_array_parameters(solver, N, RaceCarsModel::P_WX, terminal_wx);
-    set_stage_array_parameters(solver, N, RaceCarsModel::P_WU, terminal_wu);
+    set_stage_array_parameters(solver, N, P_XREF, xref_terminal);
+    set_stage_array_parameters(solver, N, P_UREF, uref_terminal);
+    set_stage_array_parameters(solver, N, P_WX, terminal_wx);
+    set_stage_array_parameters(solver, N, P_WU, terminal_wu);
 }
 
 void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::array<double, 6>& x0) {
@@ -1309,6 +925,7 @@ void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::ar
 
 std::vector<RaceStep> run_race_case(const Args& args) {
     SolverConfig config = make_solver_config();
+    // Match the official acados race_cars closed-loop (SQP_RTI): one RTI-style iteration per control step.
     config.enable_rti = true;
     config.max_iters = 1;
     config.tol_con = 1e-2;
@@ -1343,6 +960,9 @@ std::vector<RaceStep> run_race_case(const Args& args) {
         const auto end = std::chrono::steady_clock::now();
         result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
         result.iterations = solver.get_iteration_count();
+        result.deriv_ms = solver.get_profile_time_ms("Derivatives");
+        result.riccati_ms = solver.get_profile_time_ms("Linear Solve");
+        result.line_search_ms = solver.get_profile_time_ms("Line Search");
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
         result.s = solver.get_state(0, 0);
@@ -1375,7 +995,7 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
     std::filesystem::create_directories(csv_path.parent_path());
 
     std::ofstream out(csv_path);
-    out << "step,backend,status,time_ms,iterations,total_cost,max_constraint_violation,s,v\n";
+    out << "step,backend,status,time_ms,deriv_ms,riccati_ms,line_search_ms,iterations,total_cost,max_constraint_violation,s,v\n";
     for (const auto& result : results) {
         print_csv_line(
             out,
@@ -1383,6 +1003,9 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
             kBackendTag,
             status_to_string(result.status),
             result.time_ms,
+            result.deriv_ms,
+            result.riccati_ms,
+            result.line_search_ms,
             result.iterations,
             result.total_cost_value,
             result.max_constraint_violation_value,
@@ -1410,7 +1033,7 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
 
     std::ofstream summary(summary_path);
     summary << "case_name,backend,steps,success_rate,avg_iterations,median_ms,p95_ms,max_ms,"
-               "max_constraint_violation,avg_speed\n";
+               "max_constraint_violation,avg_speed,avg_deriv_ms,avg_riccati_ms,avg_line_search_ms\n";
     print_csv_line(
         summary,
         "race_cars",
@@ -1422,14 +1045,23 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
         percentile(times, 0.95),
         times.empty() ? 0.0 : *std::max_element(times.begin(), times.end()),
         max_viol,
-        avg_speed);
+        avg_speed,
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const RaceStep& record) { return acc + record.deriv_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const RaceStep& record) { return acc + record.riccati_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const RaceStep& record) { return acc + record.line_search_ms; }) / results.size());
 
     print_common_summary("race_cars", results, csv_path, summary_path);
+    print_profile_breakdown(results);
 }
 #endif
 
 #if defined(MINISOLVER_CASE_QUADROTOR_NAV)
 void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double s0) {
+    constexpr int P_XREF = 0;
+    constexpr int P_UREF = P_XREF + QuadrotorNavModel::NX;
+    constexpr int P_WX = P_UREF + QuadrotorNavModel::NU;
+    constexpr int P_WU = P_WX + QuadrotorNavModel::NX;
+
     std::array<double, QuadrotorNavModel::NX> stage_wx = {
         1.0, 1e-1, 1e-1,
         1e-5, 1e-5, 1e-5, 1e-5,
@@ -1456,34 +1088,33 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
             s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(N);
         std::array<double, QuadrotorNavModel::NX> xref = {
             sref_k, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0, 0.0,
             sref_dot, 0.0, 0.0,
             0.0, 0.0, 0.0,
             0.0, 0.0, 0.0,
             quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov,
         };
         std::array<double, QuadrotorNavModel::NU> uref = {0.0, 0.0, 0.0, 0.0};
-        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_XREF, xref);
-        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_UREF, uref);
-        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_WX, stage_wx);
-        set_stage_array_parameters(solver, k, QuadrotorNavModel::P_WU, stage_wu);
+        set_stage_array_parameters(solver, k, P_XREF, xref);
+        set_stage_array_parameters(solver, k, P_UREF, uref);
+        set_stage_array_parameters(solver, k, P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, P_WU, stage_wu);
     }
 
-    const double terminal_sref =
-        s0 + (sref - s0) * static_cast<double>(N - 1) / static_cast<double>(N);
+    const double terminal_sref = sref;
     std::array<double, QuadrotorNavModel::NX> xref_terminal = {
         terminal_sref, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0, 0.0,
         sref_dot, 0.0, 0.0,
         0.0, 0.0, 0.0,
         0.0, 0.0, 0.0,
         quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov,
     };
     std::array<double, QuadrotorNavModel::NU> uref_terminal = {0.0, 0.0, 0.0, 0.0};
-    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_XREF, xref_terminal);
-    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_UREF, uref_terminal);
-    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_WX, terminal_wx);
-    set_stage_array_parameters(solver, N, QuadrotorNavModel::P_WU, terminal_wu);
+    set_stage_array_parameters(solver, N, P_XREF, xref_terminal);
+    set_stage_array_parameters(solver, N, P_UREF, uref_terminal);
+    set_stage_array_parameters(solver, N, P_WX, terminal_wx);
+    set_stage_array_parameters(solver, N, P_WU, terminal_wu);
 }
 
 void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std::array<double, 20>& x0) {
@@ -1499,6 +1130,7 @@ void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std
 
 std::vector<QuadStep> run_quad_case(const Args& args) {
     SolverConfig config = make_solver_config();
+    // Match the official acados quadrotor_nav closed-loop (SQP_RTI): one RTI-style iteration per control step.
     config.enable_rti = true;
     config.max_iters = 1;
     config.tol_con = 1e-2;
@@ -1544,6 +1176,9 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
         const auto end = std::chrono::steady_clock::now();
         result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
         result.iterations = solver.get_iteration_count();
+        result.deriv_ms = solver.get_profile_time_ms("Derivatives");
+        result.riccati_ms = solver.get_profile_time_ms("Linear Solve");
+        result.line_search_ms = solver.get_profile_time_ms("Line Search");
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
 
@@ -1574,7 +1209,7 @@ void write_quad_outputs(const Args& args, const std::vector<QuadStep>& results) 
     std::filesystem::create_directories(csv_path.parent_path());
 
     std::ofstream out(csv_path);
-    out << "step,backend,status,time_ms,iterations,total_cost,max_constraint_violation,abs_n,abs_b\n";
+    out << "step,backend,status,time_ms,deriv_ms,riccati_ms,line_search_ms,iterations,total_cost,max_constraint_violation,abs_n,abs_b\n";
     for (const auto& result : results) {
         print_csv_line(
             out,
@@ -1582,6 +1217,9 @@ void write_quad_outputs(const Args& args, const std::vector<QuadStep>& results) 
             kBackendTag,
             status_to_string(result.status),
             result.time_ms,
+            result.deriv_ms,
+            result.riccati_ms,
+            result.line_search_ms,
             result.iterations,
             result.total_cost_value,
             result.max_constraint_violation_value,
@@ -1612,7 +1250,7 @@ void write_quad_outputs(const Args& args, const std::vector<QuadStep>& results) 
 
     std::ofstream summary(summary_path);
     summary << "case_name,backend,steps,success_rate,avg_iterations,median_ms,p95_ms,max_ms,"
-               "max_constraint_violation,avg_abs_n,avg_abs_b\n";
+               "max_constraint_violation,avg_abs_n,avg_abs_b,avg_deriv_ms,avg_riccati_ms,avg_line_search_ms\n";
     print_csv_line(
         summary,
         "quadrotor_nav",
@@ -1625,9 +1263,13 @@ void write_quad_outputs(const Args& args, const std::vector<QuadStep>& results) 
         times.empty() ? 0.0 : *std::max_element(times.begin(), times.end()),
         max_viol,
         avg_abs_n,
-        avg_abs_b);
+        avg_abs_b,
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const QuadStep& record) { return acc + record.deriv_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const QuadStep& record) { return acc + record.riccati_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const QuadStep& record) { return acc + record.line_search_ms; }) / results.size());
 
     print_common_summary("quadrotor_nav", results, csv_path, summary_path);
+    print_profile_breakdown(results);
 }
 #endif
 
@@ -1755,6 +1397,9 @@ std::vector<ChainStep> run_chain_case(const Args& args) {
         const auto end = std::chrono::steady_clock::now();
         result.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
         result.iterations = solver.get_iteration_count();
+        result.deriv_ms = solver.get_profile_time_ms("Derivatives");
+        result.riccati_ms = solver.get_profile_time_ms("Linear Solve");
+        result.line_search_ms = solver.get_profile_time_ms("Line Search");
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
 
@@ -1790,7 +1435,7 @@ void write_chain_outputs(const Args& args, const std::vector<ChainStep>& results
     std::filesystem::create_directories(csv_path.parent_path());
 
     std::ofstream out(csv_path);
-    out << "step,backend,status,time_ms,iterations,total_cost,max_constraint_violation,wall_dist\n";
+    out << "step,backend,status,time_ms,deriv_ms,riccati_ms,line_search_ms,iterations,total_cost,max_constraint_violation,wall_dist\n";
     for (const auto& result : results) {
         print_csv_line(
             out,
@@ -1798,6 +1443,9 @@ void write_chain_outputs(const Args& args, const std::vector<ChainStep>& results
             kBackendTag,
             status_to_string(result.status),
             result.time_ms,
+            result.deriv_ms,
+            result.riccati_ms,
+            result.line_search_ms,
             result.iterations,
             result.total_cost_value,
             result.max_constraint_violation_value,
@@ -1824,7 +1472,7 @@ void write_chain_outputs(const Args& args, const std::vector<ChainStep>& results
 
     std::ofstream summary(summary_path);
     summary << "case_name,backend,steps,success_rate,avg_iterations,median_ms,p95_ms,max_ms,"
-               "max_constraint_violation,min_wall_dist\n";
+               "max_constraint_violation,min_wall_dist,avg_deriv_ms,avg_riccati_ms,avg_line_search_ms\n";
     print_csv_line(
         summary,
         "chain_mass",
@@ -1836,9 +1484,13 @@ void write_chain_outputs(const Args& args, const std::vector<ChainStep>& results
         percentile(times, 0.95),
         times.empty() ? 0.0 : *std::max_element(times.begin(), times.end()),
         max_viol,
-        min_wall_dist);
+        min_wall_dist,
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const ChainStep& record) { return acc + record.deriv_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const ChainStep& record) { return acc + record.riccati_ms; }) / results.size(),
+        results.empty() ? 0.0 : std::accumulate(results.begin(), results.end(), 0.0, [](double acc, const ChainStep& record) { return acc + record.line_search_ms; }) / results.size());
 
     print_common_summary("chain_mass", results, csv_path, summary_path);
+    print_profile_breakdown(results);
 }
 #endif
 
