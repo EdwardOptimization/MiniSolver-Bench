@@ -541,8 +541,6 @@ struct PendulumModel {
                 kp.B(3,0) = tmp_d58*(tmp_d112*(-tmp_d13*tmp_d17*tmp_d24*tmp_d246 + tmp_d14) + tmp_d117*(0.020000000000000004*tmp_d14*tmp_d144*tmp_d164*tmp_d19*tmp_d54 + 2.6977500000000005*tmp_d14*tmp_d164*tmp_d19*tmp_d33 - tmp_d240*tmp_d261 - tmp_d253*tmp_d34 - tmp_d257*tmp_d37 + tmp_d33) + tmp_d120*(0.080000000000000016*dt*tmp_d104*tmp_d227*tmp_d263 + 10.791000000000002*dt*tmp_d263*tmp_d97 - tmp_d242*tmp_d264 - tmp_d243*tmp_d264 - tmp_d244*tmp_d271 + tmp_d97) - 0.080000000000000016*tmp_d238*tmp_d251*tmp_d38 - tmp_d241*tmp_d270 + tmp_d245);
                 break;
             }
-            default:
-                break;
         }
     }
 
