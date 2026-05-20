@@ -30,6 +30,17 @@ def ensure_minisolver_python_path() -> None:
     sys.path.insert(0, str(root / "python"))
 
 
+def set_dynamics(model, state, rhs) -> None:
+    legacy = getattr(model, "set_dynamics", None)
+    if legacy is not None:
+        legacy(state, rhs)
+        return
+
+    from minisolver.MiniModel import Dot
+
+    model.subject_to(Dot(state) == rhs)
+
+
 def fit_fourier_series(s_samples: np.ndarray, y_samples: np.ndarray, harmonics: int) -> tuple[float, np.ndarray]:
     pathlength = float(s_samples[-1])
     omega = 2.0 * np.pi / pathlength

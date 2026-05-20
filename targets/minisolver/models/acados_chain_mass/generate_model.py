@@ -40,8 +40,10 @@ MINISOLVER_SOURCE_DIR = os.environ.get(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../MiniSolver")),
 )
 sys.path.append(os.path.join(MINISOLVER_SOURCE_DIR, "python"))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
 
 from minisolver.MiniModel import OptimalControlModel  # noqa: E402
+from targets.minisolver.models.common import set_dynamics  # noqa: E402
 
 
 # =============================================================================
@@ -186,14 +188,14 @@ def build_model() -> OptimalControlModel:
     #   free-end mass (index M) has dpos_M/dt = u
     for i in range(M):
         for axis in range(3):
-            model.set_dynamics(pos_syms[3 * i + axis], vel_syms[3 * i + axis])
+            set_dynamics(model, pos_syms[3 * i + axis], vel_syms[3 * i + axis])
     for axis in range(3):
-        model.set_dynamics(pos_syms[3 * M + axis], ctrl_syms[axis])
+        set_dynamics(model, pos_syms[3 * M + axis], ctrl_syms[axis])
 
     # Velocity dynamics for intermediate masses: dvel_i/dt = force[i]
     for i in range(M):
         for axis in range(3):
-            model.set_dynamics(vel_syms[3 * i + axis], force[i][axis])
+            set_dynamics(model, vel_syms[3 * i + axis], force[i][axis])
 
     # --- Cost (weighted least squares on state + control) ---
     # cost = 0.5 * sum Wx_i * (x_i - xref_i)^2 + 0.5 * sum Wu_j * u_j^2

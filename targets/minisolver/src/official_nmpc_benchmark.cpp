@@ -745,7 +745,7 @@ PendulumStep run_pendulum_step(MiniSolver<PendulumModel, 80>& solver, int step) 
 std::vector<PendulumStep> run_pendulum_case(const Args& args) {
     SolverConfig config = make_solver_config();
     // Match the official acados pendulum example ("as_rti"): one RTI-style iteration per control step.
-    config.enable_rti = true;
+    config.termination_profile = TerminationProfile::RTI_FIXED_ITERATION;
     // In RTI (single-iteration) mode, use a rollout trial point so the iterate remains dynamically
     // consistent after the step. Otherwise postsolve can fail on large multiple-shooting defects.
     config.enable_line_search_rollout = true;
@@ -926,7 +926,7 @@ void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::ar
 std::vector<RaceStep> run_race_case(const Args& args) {
     SolverConfig config = make_solver_config();
     // Match the official acados race_cars closed-loop (SQP_RTI): one RTI-style iteration per control step.
-    config.enable_rti = true;
+    config.termination_profile = TerminationProfile::RTI_FIXED_ITERATION;
     config.max_iters = 1;
     config.tol_con = 1e-2;
     config.tol_dual = 1e-2;
@@ -1131,7 +1131,7 @@ void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std
 std::vector<QuadStep> run_quad_case(const Args& args) {
     SolverConfig config = make_solver_config();
     // Match the official acados quadrotor_nav closed-loop (SQP_RTI): one RTI-style iteration per control step.
-    config.enable_rti = true;
+    config.termination_profile = TerminationProfile::RTI_FIXED_ITERATION;
     config.max_iters = 1;
     config.tol_con = 1e-2;
     config.tol_dual = 1e-2;

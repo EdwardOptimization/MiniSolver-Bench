@@ -1,7 +1,7 @@
 #pragma once
 #include "minisolver/core/types.h"
 #include "minisolver/core/solver_options.h"
-#include "minisolver/core/matrix_defs.h"
+#include "minisolver/matrix/matrix_defs.h"
 #include <cmath>
 #include <string>
 #include <array>
@@ -14,6 +14,8 @@ struct RaceCarsModel {
     static const int NU=2;
     static const int NC=14;
     static const int NP=16;
+
+    static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
     static constexpr std::array<double, NC> constraint_weights = {100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0, 0.0, 0.0, 0.0};
     static constexpr std::array<int, NC> constraint_types = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};

@@ -8,8 +8,10 @@ MINISOLVER_SOURCE_DIR = os.environ.get(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../MiniSolver")),
 )
 sys.path.append(os.path.join(MINISOLVER_SOURCE_DIR, "python"))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
 
 from minisolver.MiniModel import OptimalControlModel
+from targets.minisolver.models.common import set_dynamics
 
 
 if __name__ == "__main__":
@@ -29,9 +31,10 @@ if __name__ == "__main__":
 
     denom = M + m - m * sp.cos(theta) ** 2
 
-    model.set_dynamics(x, v)
-    model.set_dynamics(theta, omega)
-    model.set_dynamics(
+    set_dynamics(model, x, v)
+    set_dynamics(model, theta, omega)
+    set_dynamics(
+        model,
         v,
         (
             -m * l * sp.sin(theta) * omega**2
@@ -40,7 +43,8 @@ if __name__ == "__main__":
         )
         / denom,
     )
-    model.set_dynamics(
+    set_dynamics(
+        model,
         omega,
         (
             -m * l * sp.cos(theta) * sp.sin(theta) * omega**2

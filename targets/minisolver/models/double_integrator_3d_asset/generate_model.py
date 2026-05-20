@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from targets.minisolver.models.common import ensure_minisolver_python_path
+from targets.minisolver.models.common import ensure_minisolver_python_path, set_dynamics
 
 
 ensure_minisolver_python_path()
@@ -30,12 +30,12 @@ if __name__ == "__main__":
     vy_ref = model.parameter("vy_ref")
     vz_ref = model.parameter("vz_ref")
 
-    model.set_dynamics(x, vx)
-    model.set_dynamics(y, vy)
-    model.set_dynamics(z, vz)
-    model.set_dynamics(vx, ax)
-    model.set_dynamics(vy, ay)
-    model.set_dynamics(vz, az)
+    set_dynamics(model, x, vx)
+    set_dynamics(model, y, vy)
+    set_dynamics(model, z, vz)
+    set_dynamics(model, vx, ax)
+    set_dynamics(model, vy, ay)
+    set_dynamics(model, vz, az)
 
     model.minimize(15.0 * (x - x_ref) ** 2)
     model.minimize(15.0 * (y - y_ref) ** 2)

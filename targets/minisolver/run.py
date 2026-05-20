@@ -175,7 +175,20 @@ def generate_native_model(case_name: str, minisolver_source_dir: Path, acados_re
         "race_cars": script_dir / "acados_race_cars" / "generate_model.py",
         "quadrotor_nav": script_dir / "acados_quadrotor_nav" / "generate_model.py",
     }
+    checked_in_ppoly_headers = {
+        "race_cars": ROOT / "targets" / "minisolver" / "generated" / "racecarsmodel.h",
+        "quadrotor_nav": ROOT / "targets" / "minisolver" / "generated" / "quadrotornavmodel.h",
+    }
     if case_name not in script_map:
+        return
+    if case_name in checked_in_ppoly_headers and not minisolver_supports_ppoly(minisolver_source_dir):
+        header = checked_in_ppoly_headers[case_name]
+        if not header.exists():
+            raise FileNotFoundError(
+                f"{case_name} requires checked-in ppoly generated asset because current MiniModel "
+                f"does not expose ppoly(): {header}"
+            )
+        print(f"+ using checked-in generated model {header} (MiniModel ppoly unavailable)")
         return
     script_path = script_map[case_name]
     env = os.environ.copy()
@@ -184,6 +197,29 @@ def generate_native_model(case_name: str, minisolver_source_dir: Path, acados_re
     cmd = [sys.executable, str(script_path)]
     print("+", " ".join(str(part) for part in cmd))
     subprocess.run(cmd, cwd=ROOT, env=env, check=True)
+
+
+def minisolver_supports_ppoly(minisolver_source_dir: Path) -> bool:
+    minisolver_python = minisolver_source_dir.resolve() / "python"
+    if not minisolver_python.exists():
+        return False
+    old_path = list(sys.path)
+    try:
+        sys.path.insert(0, str(minisolver_python))
+        from minisolver.MiniModel import OptimalControlModel  # type: ignore
+
+        return hasattr(OptimalControlModel, "ppoly")
+    except Exception:
+        return False
+    finally:
+        sys.path = old_path
+
+
+def generate_native_models_for_build(case_name: str, minisolver_source_dir: Path, acados_repo: Path) -> None:
+    # official_nmpc_benchmark.cpp includes PendulumModel unconditionally for shared helpers.
+    generate_native_model("pendulum_on_cart", minisolver_source_dir, acados_repo)
+    if case_name != "pendulum_on_cart":
+        generate_native_model(case_name, minisolver_source_dir, acados_repo)
 
 
 def write_official_case_header(metadata_by_case: dict[str, dict]) -> None:
@@ -312,11 +348,15 @@ def failure_record_path(output: Path) -> Path:
 
 
 def write_failure_record(output: Path, case_name: str, stage: str, error: str) -> None:
+    try:
+        output_label = str(output.relative_to(ROOT))
+    except ValueError:
+        output_label = str(output)
     record = {
         "backend": "minisolver",
         "backend_family": "minisolver",
         "case_name": case_name,
-        "file": str(output.relative_to(ROOT)),
+        "file": output_label,
         "steps": 0,
         "success_rate": 0.0,
         "failure_stage": stage,
@@ -338,13 +378,16 @@ def main() -> int:
     failure_path = failure_record_path(output)
 
     try:
-        generate_native_model(args.case, args.minisolver_source_dir, args.acados_repo)
+        generate_native_models_for_build(args.case, args.minisolver_source_dir, args.acados_repo)
         binary = ensure_binary(
             args.case,
             args.binary,
             build_dir,
             args.minisolver_source_dir,
         )
+    except FileNotFoundError as exc:
+        write_failure_record(output, args.case, "build", str(exc))
+        return 1
     except subprocess.CalledProcessError as exc:
         write_failure_record(output, args.case, "build", str(exc))
         return int(exc.returncode or 1)

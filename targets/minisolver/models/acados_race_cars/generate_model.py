@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 from targets.minisolver.models.common import (
     acados_repo_dir,
     ensure_minisolver_python_path,
+    set_dynamics,
 )
 
 
@@ -73,12 +74,12 @@ if __name__ == "__main__":
     alat = c2 * v**2 * delta + fxd * sp.sin(c1 * delta) / m
     along = fxd / m
 
-    model.set_dynamics(s, sdot)
-    model.set_dynamics(n, v * sp.sin(alpha + c1 * delta))
-    model.set_dynamics(alpha, v * c2 * delta - kappa * sdot)
-    model.set_dynamics(v, along * sp.cos(c1 * delta))
-    model.set_dynamics(throttle, der_throttle)
-    model.set_dynamics(delta, der_delta)
+    set_dynamics(model, s, sdot)
+    set_dynamics(model, n, v * sp.sin(alpha + c1 * delta))
+    set_dynamics(model, alpha, v * c2 * delta - kappa * sdot)
+    set_dynamics(model, v, along * sp.cos(c1 * delta))
+    set_dynamics(model, throttle, der_throttle)
+    set_dynamics(model, delta, der_delta)
 
     states = [s, n, alpha, v, throttle, delta]
     controls = [der_throttle, der_delta]

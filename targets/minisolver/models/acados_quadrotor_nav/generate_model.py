@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 from targets.minisolver.models.common import (
     acados_repo_dir,
     ensure_minisolver_python_path,
+    set_dynamics,
 )
 
 
@@ -186,26 +187,26 @@ if __name__ == "__main__":
     n_acc = en.dot(v_dot_c) + en_dot.dot(v_c) + tau_dot * s_prog_dot * b + tau * s_acc * b + tau * s_prog_dot * b_prog_dot
     b_acc = eb.dot(v_dot_c) + eb_dot.dot(v_c) - tau_dot * s_prog_dot * n - tau * s_acc * n - tau * s_prog_dot * n_prog_dot
 
-    model.set_dynamics(s, s_prog_dot)
-    model.set_dynamics(n, n_prog_dot)
-    model.set_dynamics(b, b_prog_dot)
-    model.set_dynamics(q1, q1_dot)
-    model.set_dynamics(q2, q2_dot)
-    model.set_dynamics(q3, q3_dot)
-    model.set_dynamics(q4, q4_dot)
-    model.set_dynamics(s_dot, s_acc)
-    model.set_dynamics(n_dot, n_acc)
-    model.set_dynamics(b_dot, b_acc)
-    model.set_dynamics(wr, omg_dot[0])
-    model.set_dynamics(wp, omg_dot[1])
-    model.set_dynamics(wy, omg_dot[2])
-    model.set_dynamics(vx, v_dot_c[0])
-    model.set_dynamics(vy, v_dot_c[1])
-    model.set_dynamics(vz, v_dot_c[2])
-    model.set_dynamics(ohm1, alpha1)
-    model.set_dynamics(ohm2, alpha2)
-    model.set_dynamics(ohm3, alpha3)
-    model.set_dynamics(ohm4, alpha4)
+    set_dynamics(model, s, s_prog_dot)
+    set_dynamics(model, n, n_prog_dot)
+    set_dynamics(model, b, b_prog_dot)
+    set_dynamics(model, q1, q1_dot)
+    set_dynamics(model, q2, q2_dot)
+    set_dynamics(model, q3, q3_dot)
+    set_dynamics(model, q4, q4_dot)
+    set_dynamics(model, s_dot, s_acc)
+    set_dynamics(model, n_dot, n_acc)
+    set_dynamics(model, b_dot, b_acc)
+    set_dynamics(model, wr, omg_dot[0])
+    set_dynamics(model, wp, omg_dot[1])
+    set_dynamics(model, wy, omg_dot[2])
+    set_dynamics(model, vx, v_dot_c[0])
+    set_dynamics(model, vy, v_dot_c[1])
+    set_dynamics(model, vz, v_dot_c[2])
+    set_dynamics(model, ohm1, alpha1)
+    set_dynamics(model, ohm2, alpha2)
+    set_dynamics(model, ohm3, alpha3)
+    set_dynamics(model, ohm4, alpha4)
 
     states = [s, n, b, q1, q2, q3, q4, s_dot, n_dot, b_dot, wr, wp, wy, vx, vy, vz, ohm1, ohm2, ohm3, ohm4]
     controls = [alpha1, alpha2, alpha3, alpha4]

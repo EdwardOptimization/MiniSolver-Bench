@@ -8,7 +8,7 @@ import sympy as sp
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from targets.minisolver.models.common import ensure_minisolver_python_path
+from targets.minisolver.models.common import ensure_minisolver_python_path, set_dynamics
 
 
 ensure_minisolver_python_path()
@@ -42,11 +42,11 @@ if __name__ == "__main__":
     psi_error = sp.atan2(sp.sin(psi - psi_ref), sp.cos(psi - psi_ref))
     lateral = n_x * (x - x_ref) + n_y * (y - y_ref)
 
-    model.set_dynamics(x, v * sp.cos(psi))
-    model.set_dynamics(y, v * sp.sin(psi))
-    model.set_dynamics(psi, v * sp.tan(delta) / wheelbase)
-    model.set_dynamics(v, accel)
-    model.set_dynamics(delta, delta_rate)
+    set_dynamics(model, x, v * sp.cos(psi))
+    set_dynamics(model, y, v * sp.sin(psi))
+    set_dynamics(model, psi, v * sp.tan(delta) / wheelbase)
+    set_dynamics(model, v, accel)
+    set_dynamics(model, delta, delta_rate)
 
     model.minimize(10.0 * (x - x_ref) ** 2)
     model.minimize(10.0 * (y - y_ref) ** 2)
