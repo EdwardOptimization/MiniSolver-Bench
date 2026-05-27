@@ -8,27 +8,27 @@ For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step 
 
 ## Provenance
 
-- `nmpc-bench`: `b4d558320cbce9851d46728cacec386bdc15d1b9`
+- `nmpc-bench`: `a06975e7b7a6c0fef77c340367fe1e62a44ac7a7`
 - `acados`: `third_party/acados` at `47b961bcaf493de59048918ffaa585181466ea65`
-- `MiniSolver`: `third_party/MiniSolver` at `dfb1861de4ca580b35288cab5bdc25857ec2f26e`
-  - branch: `master`
+- `MiniSolver`: `third_party/MiniSolver` at `f4356047c2213a7c7b5d66187bc62118ed5eab8d`
+  - branch: `detached`
 
 ## Summary
 
 | Backend | Case | Steps | Success | Median ms | P95 ms | Max ms | Extra |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `minisolver` | `pendulum_on_cart` | 100 | 1 | 0.0366205 | 0.0403815 | 0.077421 | `avg_iterations=1`, `max_constraint_violation=0`, `final_theta_abs=0.00160175` |
-| `acados` | `pendulum_on_cart` | 100 | 1 | 0.5365 | 0.8654 | 1.471 | `avg_iterations=1`, `final_theta_abs=0.0247401` |
-| `casadi` | `pendulum_on_cart` | 100 | 0.98 | 1.67175 | 276.881 | 1622.91 | `avg_iterations=2.89796`, `final_theta_abs=0.0016704` |
-| `minisolver` | `race_cars` | 500 | 0.906 | 0.401139 | 0.428082 | 0.511706 | `avg_iterations=1`, `max_constraint_violation=0.0700106`, `avg_speed=1.54816` |
-| `acados` | `race_cars` | 344 | 1 | 0.742 | 0.9635 | 1.761 | `avg_speed=1.35207` |
-| `casadi` | `race_cars` | 500 | 0 | 2.51439 | 2.55963 | 2891.64 | `avg_speed=nan` |
-| `minisolver` | `quadrotor_nav` | 1560 | 1 | 1.30837 | 1.35031 | 1.63718 | `avg_iterations=1`, `max_constraint_violation=0`, `avg_abs_n=0.0399726`, `avg_abs_b=0.000869766` |
-| `acados` | `quadrotor_nav` | 1566 | 1 | 2.254 | 2.32075 | 3.715 | `avg_abs_n=5.49982e-05`, `avg_abs_b=1.654e-05` |
-| `casadi` | `quadrotor_nav` | 1566 | 1 | 265.961 | 283.131 | 477.64 | `avg_iterations=1.00702`, `avg_abs_n=4.41991e-05`, `avg_abs_b=1.51695e-05` |
-| `minisolver` | `chain_mass` | 25 | 1 | 2.27817 | 3.92546 | 5.93721 | `avg_iterations=3.52`, `max_constraint_violation=0`, `min_wall_dist=0.00112253` |
-| `acados` | `chain_mass` | 25 | 1 | 6.137 | 9.636 | 9.764 | `min_wall_dist=-0.00841888` |
-| `casadi` | `chain_mass` | 25 | 1 | 368.493 | 391.51 | 410.568 | `avg_iterations=2.32`, `min_wall_dist=-0.000475765` |
+| `minisolver` | `pendulum_on_cart` | 100 | 1 | 0.036425 | 0.040026 | 0.04714 | `avg_iterations=1`, `max_constraint_violation=0`, `final_theta_abs=0.00102476` |
+| `acados` | `pendulum_on_cart` | 100 | 1 | 0.5495 | 0.8693 | 1.485 | `avg_iterations=1`, `final_theta_abs=0.0247401` |
+| `casadi` | `pendulum_on_cart` | 100 | 0.98 | 1.70865 | 278.006 | 1619.77 | `avg_iterations=2.89796`, `final_theta_abs=0.0016704` |
+| `minisolver` | `race_cars` | 500 | 0.814 | 0.379005 | 0.407147 | 0.565597 | `avg_iterations=1`, `max_constraint_violation=0.0287803`, `avg_speed=1.47131` |
+| `acados` | `race_cars` | 344 | 1 | 0.726 | 0.9478 | 1.443 | `avg_speed=1.35207` |
+| `casadi` | `race_cars` | 500 | 0 | 2.4517 | 2.51766 | 2851.95 | `avg_speed=nan` |
+| `minisolver` | `quadrotor_nav` | 1560 | 1 | 1.243 | 1.29983 | 1.47449 | `avg_iterations=1`, `max_constraint_violation=0`, `avg_abs_n=0.0399727`, `avg_abs_b=0.00086986` |
+| `acados` | `quadrotor_nav` | 1566 | 1 | 2.5 | 2.6305 | 3.597 | `avg_abs_n=5.49982e-05`, `avg_abs_b=1.654e-05` |
+| `casadi` | `quadrotor_nav` | 1566 | 1 | 277.058 | 285.742 | 504.462 | `avg_iterations=1.00702`, `avg_abs_n=4.41991e-05`, `avg_abs_b=1.51695e-05` |
+| `minisolver` | `chain_mass` | 25 | 1 | 2.21131 | 3.812 | 5.70549 | `avg_iterations=3.52`, `max_constraint_violation=0`, `min_wall_dist=0.00112253` |
+| `acados` | `chain_mass` | 25 | 1 | 5.974 | 9.4886 | 9.653 | `min_wall_dist=-0.00841888` |
+| `casadi` | `chain_mass` | 25 | 1 | 360.629 | 387.148 | 408.922 | `avg_iterations=2.32`, `min_wall_dist=-0.000475765` |
 
 ## Fairness Notes
 
@@ -43,21 +43,21 @@ For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step 
 
 ## Pairwise Comparison
 
-- `pendulum_on_cart`: `acados/MiniSolver` latency ratio is `median 14.65x`, `p95 21.43x`.
+- `pendulum_on_cart`: `acados/MiniSolver` latency ratio is `median 15.09x`, `p95 21.72x`.
 - `pendulum_on_cart`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `pendulum_on_cart`: `CasADi/MiniSolver` latency ratio is `median 45.65x`, `p95 6856.64x`.
+- `pendulum_on_cart`: `CasADi/MiniSolver` latency ratio is `median 46.91x`, `p95 6945.65x`.
 - `pendulum_on_cart`: success is `MiniSolver 100.00%` vs `CasADi 98.00%`.
-- `race_cars`: `acados/MiniSolver` latency ratio is `median 1.85x`, `p95 2.25x`.
-- `race_cars`: success is `MiniSolver 90.60%` vs `acados 100.00%`.
-- `race_cars`: `CasADi/MiniSolver` latency ratio is `median 6.27x`, `p95 5.98x`.
-- `race_cars`: success is `MiniSolver 90.60%` vs `CasADi 0.00%`.
-- `quadrotor_nav`: `acados/MiniSolver` latency ratio is `median 1.72x`, `p95 1.72x`.
+- `race_cars`: `acados/MiniSolver` latency ratio is `median 1.92x`, `p95 2.33x`.
+- `race_cars`: success is `MiniSolver 81.40%` vs `acados 100.00%`.
+- `race_cars`: `CasADi/MiniSolver` latency ratio is `median 6.47x`, `p95 6.18x`.
+- `race_cars`: success is `MiniSolver 81.40%` vs `CasADi 0.00%`.
+- `quadrotor_nav`: `acados/MiniSolver` latency ratio is `median 2.01x`, `p95 2.02x`.
 - `quadrotor_nav`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `quadrotor_nav`: `CasADi/MiniSolver` latency ratio is `median 203.28x`, `p95 209.68x`.
+- `quadrotor_nav`: `CasADi/MiniSolver` latency ratio is `median 222.90x`, `p95 219.83x`.
 - `quadrotor_nav`: success is `MiniSolver 100.00%` vs `CasADi 100.00%`.
-- `chain_mass`: `acados/MiniSolver` latency ratio is `median 2.69x`, `p95 2.45x`.
+- `chain_mass`: `acados/MiniSolver` latency ratio is `median 2.70x`, `p95 2.49x`.
 - `chain_mass`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `chain_mass`: `CasADi/MiniSolver` latency ratio is `median 161.75x`, `p95 99.74x`.
+- `chain_mass`: `CasADi/MiniSolver` latency ratio is `median 163.08x`, `p95 101.56x`.
 - `chain_mass`: success is `MiniSolver 100.00%` vs `CasADi 100.00%`.
 
 ## Files

@@ -1,10 +1,13 @@
 #pragma once
 #include "minisolver/core/types.h"
 #include "minisolver/core/solver_options.h"
-#include "minisolver/core/matrix_defs.h"
+#include "minisolver/matrix/matrix_defs.h"
+#include "minisolver/integrator/numerical_jacobian.h"
+#include <cstdint>
 #include <cmath>
 #include <string>
 #include <array>
+#include <stdexcept>
 
 namespace minisolver {
 
@@ -14,6 +17,8 @@ struct KinematicBicycleTrackModel {
     static const int NU=2;
     static const int NC=10;
     static const int NP=10;
+
+    static constexpr std::uint64_t model_fingerprint = 0x46840bd8da735830ull;
 
     static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
@@ -54,7 +59,7 @@ struct KinematicBicycleTrackModel {
     static MSVec<T, NX> dynamics_continuous(
         const MSVec<T, NX>& x_in,
         const MSVec<T, NU>& u_in,
-        const MSVec<T, NP>& p_in) 
+        const MSVec<T, NP>& p_in)
     {
         T psi = x_in(2);
         T v = x_in(3);
@@ -73,32 +78,71 @@ struct KinematicBicycleTrackModel {
 
     }
 
+    // --- Continuous Dynamics Jacobians (for implicit integrators) ---
+    template<typename T>
+    static ContinuousJacobians<T, NX, NU> jacobian_continuous(
+        const MSVec<T, NX>& x_in,
+        const MSVec<T, NU>& u_in,
+        const MSVec<T, NP>& p_in)
+    {
+        T psi = x_in(2);
+        T v = x_in(3);
+        T delta = x_in(4);
+        (void)u_in;
+        T wheelbase = p_in(8);
+
+        ContinuousJacobians<T, NX, NU> jac;
+        T tmp_jc0 = sin(psi);
+        T tmp_jc1 = cos(psi);
+        T tmp_jc2 = tan(delta);
+        T tmp_jc3 = 1.0/wheelbase;
+
+        // Clear continuous Jacobian packets; nonzero entries are assigned below.
+        jac.Jx.setZero();
+        jac.Ju.setZero();
+
+        // Jx = df/dx
+        jac.Jx(0,2) = -tmp_jc0*v;
+        jac.Jx(0,3) = tmp_jc1;
+        jac.Jx(1,2) = tmp_jc1*v;
+        jac.Jx(1,3) = tmp_jc0;
+        jac.Jx(2,3) = tmp_jc2*tmp_jc3;
+        jac.Jx(2,4) = tmp_jc3*v*(pow(tmp_jc2, 2) + 1);
+
+        // Ju = df/du
+        jac.Ju(3,0) = 1;
+        jac.Ju(4,1) = 1;
+
+        return jac;
+
+    }
+
     // --- Integrator Interface ---
     template<typename T>
     static MSVec<T, NX> integrate(
-        const MSVec<T, NX>& x,
-        const MSVec<T, NU>& u,
-        const MSVec<T, NP>& p,
+        const MSVec<T, NX>& x_in,
+        const MSVec<T, NU>& u_in,
+        const MSVec<T, NP>& p_in,
         double dt,
         IntegratorType type)
     {
         switch(type) {
-            case IntegratorType::EULER_EXPLICIT: 
-                return x + dynamics_continuous(x, u, p) * dt;
-                
-            case IntegratorType::RK2_EXPLICIT: 
+            case IntegratorType::EULER_EXPLICIT:
+                return x_in + dynamics_continuous(x_in, u_in, p_in) * dt;
+
+            case IntegratorType::RK2_EXPLICIT:
             {
-               auto k1 = dynamics_continuous(x, u, p);
-               auto k2 = dynamics_continuous<T>(x + k1 * (0.5 * dt), u, p);
-               return x + k2 * dt;
+               auto k1 = dynamics_continuous(x_in, u_in, p_in);
+               auto k2 = dynamics_continuous<T>(x_in + k1 * (0.5 * dt), u_in, p_in);
+               return x_in + k2 * dt;
             }
 
             case IntegratorType::EULER_IMPLICIT:
             {
                 // Simple Fixed-Point Iteration for x_next = x + f(x_next, u) * dt
-                MSVec<T, NX> x_next = x; // Guess
+                MSVec<T, NX> x_next = x_in; // Guess
                 for(int i=0; i<5; ++i) {
-                    x_next = x + dynamics_continuous(x_next, u, p) * dt;
+                    x_next = x_in + dynamics_continuous(x_next, u_in, p_in) * dt;
                 }
                 return x_next;
             }
@@ -106,23 +150,28 @@ struct KinematicBicycleTrackModel {
             case IntegratorType::RK2_IMPLICIT:
             {
                 // Implicit Midpoint: k = f(x + 0.5*dt*k). x_next = x + dt*k
-                MSVec<T, NX> k = dynamics_continuous(x, u, p); // Guess k0
+                MSVec<T, NX> k = dynamics_continuous(x_in, u_in, p_in); // Guess k0
                 for(int i=0; i<5; ++i) {
-                    k = dynamics_continuous<T>(x + k * (0.5 * dt), u, p);
+                    k = dynamics_continuous<T>(x_in + k * (0.5 * dt), u_in, p_in);
                 }
-                return x + k * dt;
+                return x_in + k * dt;
             }
 
-            // Fallback for others to RK4 or appropriate handling
-            default: // RK4 Explicit (Default)
+            case IntegratorType::RK4_EXPLICIT:
+            case IntegratorType::RK4_IMPLICIT:
             {
-               auto k1 = dynamics_continuous(x, u, p);
-               auto k2 = dynamics_continuous<T>(x + k1 * (0.5 * dt), u, p);
-               auto k3 = dynamics_continuous<T>(x + k2 * (0.5 * dt), u, p);
-               auto k4 = dynamics_continuous<T>(x + k3 * dt, u, p);
-               return x + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0);
+               auto k1 = dynamics_continuous(x_in, u_in, p_in);
+               auto k2 = dynamics_continuous<T>(x_in + k1 * (0.5 * dt), u_in, p_in);
+               auto k3 = dynamics_continuous<T>(x_in + k2 * (0.5 * dt), u_in, p_in);
+               auto k4 = dynamics_continuous<T>(x_in + k3 * dt, u_in, p_in);
+               return x_in + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0);
             }
+
+            case IntegratorType::DISCRETE:
+                throw std::invalid_argument("DISCRETE integrator requires Next(state) dynamics");
         }
+        throw std::invalid_argument("Unsupported integrator type");
+
     }
 
     // --- 1. Compute Dynamics (f_resid, A, B) ---
@@ -153,6 +202,8 @@ struct KinematicBicycleTrackModel {
                 kp.f_resid(2) = psi + tmp_d6*v;
                 kp.f_resid(3) = a*dt + v;
                 kp.f_resid(4) = delta + delta_rate*dt;
+
+                // Clear dynamics Jacobian A; nonzero entries are assigned below.
                 kp.A.setZero();
                 kp.A(0,0) = 1;
                 kp.A(0,2) = -tmp_d3;
@@ -165,6 +216,8 @@ struct KinematicBicycleTrackModel {
                 kp.A(2,4) = tmp_d5*v*(pow(tmp_d4, 2) + 1);
                 kp.A(3,3) = 1;
                 kp.A(4,4) = 1;
+
+                // Clear dynamics Jacobian B; nonzero entries are assigned below.
                 kp.B.setZero();
                 kp.B(3,0) = dt;
                 kp.B(4,1) = dt;
@@ -203,6 +256,8 @@ struct KinematicBicycleTrackModel {
                 kp.f_resid(2) = psi + tmp_d1*tmp_d14;
                 kp.f_resid(3) = tmp_d0 + v;
                 kp.f_resid(4) = delta + tmp_d12;
+
+                // Clear dynamics Jacobian A; nonzero entries are assigned below.
                 kp.A.setZero();
                 kp.A(0,0) = 1;
                 kp.A(0,2) = -tmp_d11;
@@ -217,6 +272,8 @@ struct KinematicBicycleTrackModel {
                 kp.A(2,4) = tmp_d22*tmp_d5;
                 kp.A(3,3) = 1;
                 kp.A(4,4) = 1;
+
+                // Clear dynamics Jacobian B; nonzero entries are assigned below.
                 kp.B.setZero();
                 kp.B(0,0) = 0.5*tmp_d15*tmp_d7 - tmp_d23*tmp_d9;
                 kp.B(1,0) = tmp_d17 + tmp_d23*tmp_d7;
@@ -296,6 +353,8 @@ struct KinematicBicycleTrackModel {
                 kp.f_resid(2) = psi + tmp_d25*(tmp_d11*tmp_d36 + tmp_d2*tmp_d37 + tmp_d5*v);
                 kp.f_resid(3) = tmp_d20;
                 kp.f_resid(4) = delta + 1.0*tmp_d13;
+
+                // Clear dynamics Jacobian A; nonzero entries are assigned below.
                 kp.A.setZero();
                 kp.A(0,0) = 1;
                 kp.A(0,2) = -tmp_d25*tmp_d34;
@@ -310,6 +369,8 @@ struct KinematicBicycleTrackModel {
                 kp.A(2,4) = tmp_d25*(tmp_d42*v + 4*tmp_d47 + tmp_d51);
                 kp.A(3,3) = 1;
                 kp.A(4,4) = 1;
+
+                // Clear dynamics Jacobian B; nonzero entries are assigned below.
                 kp.B.setZero();
                 kp.B(0,0) = tmp_d25*(dt*tmp_d18 + 1.0*dt*tmp_d23 + 1.0*dt*tmp_d9 - tmp_d28*tmp_d53 - tmp_d54*tmp_d55 - tmp_d56*tmp_d57);
                 kp.B(0,1) = tmp_d25*(-tmp_d54*tmp_d58 - tmp_d56*tmp_d59);
@@ -321,12 +382,14 @@ struct KinematicBicycleTrackModel {
                 kp.B(4,1) = tmp_d38;
                 break;
             }
+            case IntegratorType::DISCRETE:
+                throw std::invalid_argument("DISCRETE integrator requires Next(state) dynamics");
         }
     }
 
-    // --- 2. Compute Constraints (g_val, C, D) ---
+    // --- 2. Compute QP/IPM Constraints (g_val, C, D) ---
     template<typename T>
-    static void compute_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+    static void compute_qp_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
         T x = kp.x(0);
         T y = kp.x(1);
         T v = kp.x(3);
@@ -345,6 +408,11 @@ struct KinematicBicycleTrackModel {
 
         T tmp_c0 = n_x*(x - x_ref) + n_y*(y - y_ref);
 
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_val.setZero();
+        kp.C.setZero();
+        kp.D.setZero();
+
         // g_val
         kp.g_val(0,0) = tmp_c0 - w_left;
         kp.g_val(1,0) = -tmp_c0 - w_right;
@@ -360,76 +428,158 @@ struct KinematicBicycleTrackModel {
         // C
         kp.C(0,0) = n_x;
         kp.C(0,1) = n_y;
-        kp.C(0,2) = 0;
-        kp.C(0,3) = 0;
-        kp.C(0,4) = 0;
         kp.C(1,0) = -n_x;
         kp.C(1,1) = -n_y;
-        kp.C(1,2) = 0;
-        kp.C(1,3) = 0;
-        kp.C(1,4) = 0;
-        kp.C(2,0) = 0;
-        kp.C(2,1) = 0;
-        kp.C(2,2) = 0;
         kp.C(2,3) = 1;
-        kp.C(2,4) = 0;
-        kp.C(3,0) = 0;
-        kp.C(3,1) = 0;
-        kp.C(3,2) = 0;
         kp.C(3,3) = -1;
-        kp.C(3,4) = 0;
-        kp.C(4,0) = 0;
-        kp.C(4,1) = 0;
-        kp.C(4,2) = 0;
-        kp.C(4,3) = 0;
         kp.C(4,4) = 1;
-        kp.C(5,0) = 0;
-        kp.C(5,1) = 0;
-        kp.C(5,2) = 0;
-        kp.C(5,3) = 0;
         kp.C(5,4) = -1;
-        kp.C(6,0) = 0;
-        kp.C(6,1) = 0;
-        kp.C(6,2) = 0;
-        kp.C(6,3) = 0;
-        kp.C(6,4) = 0;
-        kp.C(7,0) = 0;
-        kp.C(7,1) = 0;
-        kp.C(7,2) = 0;
-        kp.C(7,3) = 0;
-        kp.C(7,4) = 0;
-        kp.C(8,0) = 0;
-        kp.C(8,1) = 0;
-        kp.C(8,2) = 0;
-        kp.C(8,3) = 0;
-        kp.C(8,4) = 0;
-        kp.C(9,0) = 0;
-        kp.C(9,1) = 0;
-        kp.C(9,2) = 0;
-        kp.C(9,3) = 0;
-        kp.C(9,4) = 0;
 
         // D
-        kp.D(0,0) = 0;
-        kp.D(0,1) = 0;
-        kp.D(1,0) = 0;
-        kp.D(1,1) = 0;
-        kp.D(2,0) = 0;
-        kp.D(2,1) = 0;
-        kp.D(3,0) = 0;
-        kp.D(3,1) = 0;
-        kp.D(4,0) = 0;
-        kp.D(4,1) = 0;
-        kp.D(5,0) = 0;
-        kp.D(5,1) = 0;
         kp.D(6,0) = 1;
-        kp.D(6,1) = 0;
         kp.D(7,0) = -1;
-        kp.D(7,1) = 0;
-        kp.D(8,0) = 0;
         kp.D(8,1) = 1;
-        kp.D(9,0) = 0;
         kp.D(9,1) = -1;
+
+    }
+
+    // Legacy alias for hand-written code that still calls compute_constraints().
+    template<typename T>
+    static void compute_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_qp_constraints(kp);
+    }
+
+    // --- 2.1 Compute True Constraints (g_true) ---
+    template<typename T>
+    static void compute_true_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        T x = kp.x(0);
+        T y = kp.x(1);
+        T v = kp.x(3);
+        T delta = kp.x(4);
+        T a = kp.u(0);
+        T delta_rate = kp.u(1);
+        T x_ref = kp.p(0);
+        T y_ref = kp.p(1);
+        T n_x = kp.p(4);
+        T n_y = kp.p(5);
+        T w_left = kp.p(6);
+        T w_right = kp.p(7);
+        T delta_max = kp.p(9);
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_true.setZero();
+
+        // g_true
+        kp.g_true(0,0) = n_x*(x - x_ref) + n_y*(y - y_ref) - w_left;
+        kp.g_true(1,0) = -n_x*(x - x_ref) - n_y*(y - y_ref) - w_right;
+        kp.g_true(2,0) = v - 12.0;
+        kp.g_true(3,0) = 0.10000000000000001 - v;
+        kp.g_true(4,0) = delta - delta_max;
+        kp.g_true(5,0) = -delta - delta_max;
+        kp.g_true(6,0) = a - 15.0;
+        kp.g_true(7,0) = -a - 15.0;
+        kp.g_true(8,0) = delta_rate - 6.0;
+        kp.g_true(9,0) = -delta_rate - 6.0;
+
+    }
+
+    // --- 2.5 Terminal Stage: x-only projection of QP/IPM constraints ---
+    template<typename T>
+    static void compute_terminal_qp_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        T x = kp.x(0);
+        T y = kp.x(1);
+        T v = kp.x(3);
+        T delta = kp.x(4);
+        T x_ref = kp.p(0);
+        T y_ref = kp.p(1);
+        T n_x = kp.p(4);
+        T n_y = kp.p(5);
+        T w_left = kp.p(6);
+        T w_right = kp.p(7);
+        T delta_max = kp.p(9);
+
+        // --- Special Constraints Pre-Calculation ---
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_val.setZero();
+        kp.C.setZero();
+        kp.D.setZero();
+
+        // g_val
+        kp.g_val(0,0) = n_x*(x - x_ref) + n_y*(y - y_ref) - w_left;
+        kp.g_val(1,0) = -n_x*(x - x_ref) - n_y*(y - y_ref) - w_right;
+        kp.g_val(2,0) = v - 12.0;
+        kp.g_val(3,0) = 0.10000000000000001 - v;
+        kp.g_val(4,0) = delta - delta_max;
+        kp.g_val(5,0) = -delta - delta_max;
+        kp.g_val(6,0) = -15.0;
+        kp.g_val(7,0) = -15.0;
+        kp.g_val(8,0) = -6.0;
+        kp.g_val(9,0) = -6.0;
+
+        // C
+        kp.C(0,0) = n_x;
+        kp.C(0,1) = n_y;
+        kp.C(1,0) = -n_x;
+        kp.C(1,1) = -n_y;
+        kp.C(2,3) = 1;
+        kp.C(3,3) = -1;
+        kp.C(4,4) = 1;
+        kp.C(5,4) = -1;
+
+        // D
+
+    }
+
+    // Legacy alias for hand-written code that still calls compute_terminal_constraints().
+    template<typename T>
+    static void compute_terminal_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_terminal_qp_constraints(kp);
+    }
+
+    // --- 2.5.1 Terminal Stage: true x-only constraint residuals ---
+    template<typename T>
+    static void compute_terminal_true_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        T x = kp.x(0);
+        T y = kp.x(1);
+        T v = kp.x(3);
+        T delta = kp.x(4);
+        T x_ref = kp.p(0);
+        T y_ref = kp.p(1);
+        T n_x = kp.p(4);
+        T n_y = kp.p(5);
+        T w_left = kp.p(6);
+        T w_right = kp.p(7);
+        T delta_max = kp.p(9);
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_true.setZero();
+
+        // g_true
+        kp.g_true(0,0) = n_x*(x - x_ref) + n_y*(y - y_ref) - w_left;
+        kp.g_true(1,0) = -n_x*(x - x_ref) - n_y*(y - y_ref) - w_right;
+        kp.g_true(2,0) = v - 12.0;
+        kp.g_true(3,0) = 0.10000000000000001 - v;
+        kp.g_true(4,0) = delta - delta_max;
+        kp.g_true(5,0) = -delta - delta_max;
+        kp.g_true(6,0) = -15.0;
+        kp.g_true(7,0) = -15.0;
+        kp.g_true(8,0) = -6.0;
+        kp.g_true(9,0) = -6.0;
+
+    }
+
+    // --- 2.6 SOC correction constraints ---
+    template<typename T>
+    static void compute_soc_constraints(
+        const KnotPoint<T,NX,NU,NC,NP>& active_kp,
+        KnotPoint<T,NX,NU,NC,NP>& trial_kp) {
+        compute_qp_constraints(trial_kp);
+        compute_true_constraints(trial_kp);
+        (void)active_kp;
 
     }
 
@@ -459,6 +609,10 @@ struct KinematicBicycleTrackModel {
         T tmp_j8 = tmp_j5*tmp_j6;
         T tmp_j9 = 5.0*tmp_j7 + 5.0*tmp_j8;
 
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.q.setZero();
+        kp.r.setZero();
+
         // q
         kp.q(0,0) = 20.0*x - 20.0*x_ref;
         kp.q(1,0) = 20.0*y - 20.0*y_ref;
@@ -470,50 +624,23 @@ struct KinematicBicycleTrackModel {
         kp.r(0,0) = 0.050000000000000003*a;
         kp.r(1,0) = 0.050000000000000003*delta_rate;
 
+        // Clear Hessian packets; nonzero entries are assigned below.
+        kp.Q.setZero();
+        kp.R.setZero();
+        kp.H.setZero();
+
         // Q (Mode 0=GN, 1=Exact)
         kp.Q(0,0) = 20.0;
-        kp.Q(0,1) = 0;
-        kp.Q(0,2) = 0;
-        kp.Q(0,3) = 0;
-        kp.Q(0,4) = 0;
-        kp.Q(1,0) = 0;
         kp.Q(1,1) = 20.0;
-        kp.Q(1,2) = 0;
-        kp.Q(1,3) = 0;
-        kp.Q(1,4) = 0;
-        kp.Q(2,0) = 0;
-        kp.Q(2,1) = 0;
         kp.Q(2,2) = tmp_j9*(tmp_j7 + tmp_j8);
-        kp.Q(2,3) = 0;
-        kp.Q(2,4) = 0;
-        kp.Q(3,0) = 0;
-        kp.Q(3,1) = 0;
-        kp.Q(3,2) = 0;
         kp.Q(3,3) = 2;
-        kp.Q(3,4) = 0;
-        kp.Q(4,0) = 0;
-        kp.Q(4,1) = 0;
-        kp.Q(4,2) = 0;
-        kp.Q(4,3) = 0;
         kp.Q(4,4) = 0.5;
 
         // R (Mode 0=GN, 1=Exact)
         kp.R(0,0) = 0.050000000000000003;
-        kp.R(0,1) = 0;
-        kp.R(1,0) = 0;
         kp.R(1,1) = 0.050000000000000003;
 
         // H (Mode 0=GN, 1=Exact)
-        kp.H(0,0) = 0;
-        kp.H(0,1) = 0;
-        kp.H(0,2) = 0;
-        kp.H(0,3) = 0;
-        kp.H(0,4) = 0;
-        kp.H(1,0) = 0;
-        kp.H(1,1) = 0;
-        kp.H(1,2) = 0;
-        kp.H(1,3) = 0;
-        kp.H(1,4) = 0;
 
         kp.cost = 0.025000000000000001*pow(a, 2) + 0.25*pow(delta, 2) + 0.025000000000000001*pow(delta_rate, 2) + 2.5*pow(tmp_j3, 2) + pow(v - v_ref, 2) + 10.0*pow(x - x_ref, 2) + 10.0*pow(y - y_ref, 2);
     }
@@ -534,31 +661,90 @@ template<typename T>
     }
 
 
+    // --- 3.5 Terminal Cost (u projected to zero) ---
+    template<typename T, int Mode>
+    static void compute_terminal_cost_impl(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        T x = kp.x(0);
+        T y = kp.x(1);
+        T psi = kp.x(2);
+        T v = kp.x(3);
+        T delta = kp.x(4);
+        T x_ref = kp.p(0);
+        T y_ref = kp.p(1);
+        T psi_ref = kp.p(2);
+        T v_ref = kp.p(3);
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.q.setZero();
+        kp.r.setZero();
+
+        // q
+        kp.q(0,0) = 20.0*x - 20.0*x_ref;
+        kp.q(1,0) = 20.0*y - 20.0*y_ref;
+        kp.q(2,0) = 2.5*(2*pow(sin(psi - psi_ref), 2)/(pow(sin(psi - psi_ref), 2) + pow(cos(psi - psi_ref), 2)) + 2*pow(cos(psi - psi_ref), 2)/(pow(sin(psi - psi_ref), 2) + pow(cos(psi - psi_ref), 2)))*atan2(sin(psi - psi_ref), cos(psi - psi_ref));
+        kp.q(3,0) = 2*v - 2*v_ref;
+        kp.q(4,0) = 0.5*delta;
+
+        // r
+
+        // Clear Hessian packets; nonzero entries are assigned below.
+        kp.Q.setZero();
+        kp.R.setZero();
+        kp.H.setZero();
+
+        // terminal Q (Mode 0=GN, 1=Exact)
+        kp.Q(0,0) = 20.0;
+        kp.Q(1,1) = 20.0;
+        kp.Q(2,2) = 2.5*(pow(sin(psi - psi_ref), 2)/(pow(sin(psi - psi_ref), 2) + pow(cos(psi - psi_ref), 2)) + pow(cos(psi - psi_ref), 2)/(pow(sin(psi - psi_ref), 2) + pow(cos(psi - psi_ref), 2)))*(2*pow(sin(psi - psi_ref), 2)/(pow(sin(psi - psi_ref), 2) + pow(cos(psi - psi_ref), 2)) + 2*pow(cos(psi - psi_ref), 2)/(pow(sin(psi - psi_ref), 2) + pow(cos(psi - psi_ref), 2)));
+        kp.Q(3,3) = 2;
+        kp.Q(4,4) = 0.5;
+
+        // terminal R (Mode 0=GN, 1=Exact)
+
+        // terminal H (Mode 0=GN, 1=Exact)
+
+        kp.cost = 0.25*pow(delta, 2) + pow(v - v_ref, 2) + 10.0*pow(x - x_ref, 2) + 10.0*pow(y - y_ref, 2) + 2.5*pow(atan2(sin(psi - psi_ref), cos(psi - psi_ref)), 2);
+    }
+
+    template<typename T>
+    static void compute_terminal_cost_gn(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_terminal_cost_impl<T, 0>(kp);
+    }
+
+    template<typename T>
+    static void compute_terminal_cost_exact(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_terminal_cost_impl<T, 1>(kp);
+    }
+
+
     // --- 4. Compute All (Convenience) ---
     template<typename T>
     static void compute(KnotPoint<T,NX,NU,NC,NP>& kp, IntegratorType type, double dt) {
         compute_dynamics(kp, type, dt);
-        compute_constraints(kp);
-        compute_cost(kp); // Default GN
+        compute_qp_constraints(kp);
+        compute_true_constraints(kp);
+        compute_cost(kp); // Default exact Hessian for backward compatibility.
     }
 
     template<typename T>
     static void compute_exact(KnotPoint<T,NX,NU,NC,NP>& kp, IntegratorType type, double dt) {
         compute_dynamics(kp, type, dt);
-        compute_constraints(kp);
+        compute_qp_constraints(kp);
+        compute_true_constraints(kp);
         compute_cost_exact(kp); // Exact Hessian
     }
 
     // --- 5. Sparse Kernels (Generated) ---
-    
+
     // --- 6. Fused Riccati Kernel (Generated) ---
     // Updates kp.Q_bar, R_bar, H_bar, q_bar, r_bar in one go.
     // Uses Vxx, Vx from next step.
     template<typename T>
     static void compute_fused_riccati_step(
-        const MSMat<T, NX, NX>& Vxx, 
+        const MSMat<T, NX, NX>& Vxx,
         const MSVec<T, NX>& Vx,
-        KnotPoint<T,NX,NU,NC,NP>& kp) 
+        KnotPoint<T,NX,NU,NC,NP>& kp)
     {
         T P_0_0 = Vxx(0,0);
         T P_0_1 = Vxx(0,1);
@@ -692,6 +878,6 @@ template<typename T>
         kp.R_bar(1,0) = kp.R_bar(0,1);
 
     }
-    
+
 };
 }

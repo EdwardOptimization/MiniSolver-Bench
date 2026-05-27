@@ -17,6 +17,10 @@ Timing follows the repository's same-case end-to-end policy: the measured value
 is wall-clock time around each ALTRO solve call inside the closed-loop runner.
 CMake configure/build, dependency fetching, and report aggregation are excluded.
 
+The runner opts into `third_party/ALTRO` only for ALTRO benchmark targets. It
+configures ALTRO with tests, docs, and install helpers disabled, then builds the
+`altro_double_integrator_3d_benchmark` target.
+
 ## Prerequisites
 
 - `third_party/ALTRO` initialized as a git submodule

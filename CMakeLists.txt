@@ -26,12 +26,7 @@ set_property(CACHE MINISOLVER_CASE PROPERTY STRINGS
 
 set(ACADOS_OUTPUT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/out/acados" CACHE PATH "Path to exported acados official-case assets")
 
-set(DEFAULT_ALTRO_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ALTRO")
-if(EXISTS "${DEFAULT_ALTRO_SOURCE_DIR}/CMakeLists.txt")
-    set(ALTRO_SOURCE_DIR "${DEFAULT_ALTRO_SOURCE_DIR}" CACHE PATH "Path to an ALTRO checkout")
-else()
-    set(ALTRO_SOURCE_DIR "" CACHE PATH "Path to an ALTRO checkout")
-endif()
+set(ALTRO_SOURCE_DIR "" CACHE PATH "Path to an ALTRO checkout. Leave empty unless building ALTRO benchmark targets.")
 
 set(DEFAULT_MINISOLVER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/MiniSolver")
 if(EXISTS "${DEFAULT_MINISOLVER_SOURCE_DIR}/CMakeLists.txt")

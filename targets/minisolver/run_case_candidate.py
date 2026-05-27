@@ -60,6 +60,13 @@ def ensure_binary(binary: Path | None, build_dir: Path, minisolver_source_dir: P
         "-B",
         str(build_dir),
         f"-DMINISOLVER_SOURCE_DIR={minisolver_source_dir.resolve()}",
+        "-DALTRO_SOURCE_DIR=",
+        "-DCASADI_ROOT=",
+        "-DMINISOLVER_BUILD_TESTS=OFF",
+        "-DMINISOLVER_BUILD_EXAMPLES=OFF",
+        "-DMINISOLVER_BUILD_TOOLS=OFF",
+        "-DMINISOLVER_FETCH_DEPS=OFF",
+        "-DCMAKE_BUILD_TYPE=Release",
     ]
     build_cmd = [
         "cmake",

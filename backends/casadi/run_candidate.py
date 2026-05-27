@@ -44,13 +44,23 @@ def ensure_binary(binary: Path | None, build_dir: Path, candidate: dict) -> Path
         raise SystemExit(f"unsupported model_family for CasADi target: {model_family}")
 
     cache_exists = (build_dir / "CMakeCache.txt").exists()
+    configure_cmd = [
+        "cmake",
+        "-S",
+        str(ROOT),
+        "-B",
+        str(build_dir),
+        "-DMINISOLVER_SOURCE_DIR=",
+        "-DALTRO_SOURCE_DIR=",
+        "-DCMAKE_BUILD_TYPE=Release",
+    ]
     if not cache_exists:
-        run_command(["cmake", "-S", str(ROOT), "-B", str(build_dir)])
+        run_command(configure_cmd)
     try:
         run_command(["cmake", "--build", str(build_dir), "--target", target, "-j"])
     except subprocess.CalledProcessError:
         if cache_exists:
-            run_command(["cmake", "-S", str(ROOT), "-B", str(build_dir)])
+            run_command(configure_cmd)
             run_command(["cmake", "--build", str(build_dir), "--target", target, "-j"])
         else:
             raise
