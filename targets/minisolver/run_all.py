@@ -14,7 +14,7 @@ from cases import backend_case_names
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run all official MiniSolver benchmark cases.")
+    parser = argparse.ArgumentParser(description="Run all official MiniSolver compatibility/reference cases.")
     parser.add_argument("--minisolver-source-dir", type=Path, default=None)
     parser.add_argument("--acados-repo", type=Path, default=None)
     parser.add_argument("--refresh-assets", action="store_true")

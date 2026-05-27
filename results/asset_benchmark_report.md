@@ -2,7 +2,11 @@
 
 Same-case, closed-loop, end-to-end solver comparison for public-asset-derived candidates.
 
+This is the repository's current headline report for solver ranking. It excludes official `race_cars` and `quadrotor_nav` because those cases require piecewise track functions; MiniSolver currently runs them from checked-in generated C++ models when Python MiniModel lacks `ppoly`.
+
 Each solver row uses the same asset, model family, `dt`, horizon, and requested closed-loop step count for that candidate. The timed region is the per-step solver call inside the closed-loop runner; one-time code generation, CMake configure/build, Python import time, and report aggregation are excluded.
+
+The asset candidates do not rely on Python MiniModel piecewise modeling. Robotics candidates use native reference-tracking data, and driving candidates use runner-side track sampling plus stage parameters. For any callback-backed track model, the benchmark owner must provide smooth references and first-derivative behavior before treating the case as a headline comparison.
 
 ## Fairness Contract
 

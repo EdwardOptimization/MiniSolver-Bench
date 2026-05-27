@@ -16,11 +16,17 @@ External solvers are pulled in as git submodules instead.
 
 Fairness rules in this repository:
 
+- headline solver comparisons use same asset, model family, `dt`, horizon, and
+  requested closed-loop steps; see `results/asset_benchmark_report.md`
 - official `acados` examples define the benchmark problems
 - `acados` timings measure compiled C closed-loop runners, not Python export/codegen
 - `MiniSolver` runs as a native embedded C++ target linked directly into the benchmark app
 - `CasADi` timings measure repeated solve calls on a pre-built CasADi SQP graph; one-time graph construction is excluded
 - case-specific termination follows the official closed-loop logic for that case
+- official `race_cars` and `quadrotor_nav` require piecewise track functions.
+  Current MiniSolver Python MiniModel builds do not expose that `ppoly` modeling
+  API, so those MiniSolver runners use checked-in generated C++ models until a
+  callback-backed, smoothed-gradient path is validated.
 
 ## Layout
 
@@ -36,12 +42,34 @@ Fairness rules in this repository:
 - `plots/`: result aggregation and plotting helpers
 - `run.py`: unified entry point
 
-## Current cases
+## Current Benchmark Scope
+
+Use `results/asset_benchmark_report.md` for the current same-condition,
+end-to-end solver comparison. It is the report intended for ranking solvers.
+
+Asset-derived headline candidates:
+
+- `data_driven_mpc_loop_tracking`
+- `data_driven_mpc_lemniscate_tracking`
+- `nonlinear_mpcc_porto_following`
+- `nonlinear_mpcc_fssim_following`
+
+Asset-derived stress candidate:
+
+- `mpcc_track_following`
+
+Official compatibility/reference cases:
 
 - `pendulum_on_cart`
 - `race_cars`
 - `quadrotor_nav`
 - `chain_mass`
+
+`race_cars` and `quadrotor_nav` are kept as official acados compatibility cases,
+not as the default MiniSolver Python-modeling headline cases, because their
+track terms are piecewise functions. They should move back into headline scope
+only after the callback or native piecewise path owns first-derivative smoothing
+and has matched cross-solver evidence.
 
 ## Current backends
 
@@ -114,7 +142,7 @@ Aggregate the latest raw data:
 ./scripts/write_report.py
 ```
 
-Run all four MiniSolver cases from a local development checkout:
+Run all four official MiniSolver compatibility cases from a local development checkout:
 
 ```bash
 python3 targets/minisolver/run_all.py \
@@ -170,7 +198,7 @@ python3 targets/minisolver/run_case_candidate.py \
   --minisolver-source-dir /path/to/MiniSolver
 ```
 
-Refresh all summary and asset reports after benchmark runs:
+Refresh the official compatibility report and the asset comparison report after benchmark runs:
 
 ```bash
 python3 scripts/summarize_results.py

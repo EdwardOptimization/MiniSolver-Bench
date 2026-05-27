@@ -1,10 +1,14 @@
-# Latest Benchmark Report
+# Latest Official Compatibility Report
 
-Date: 2026-05-02
+Date: 2026-05-27
+
+This report covers official acados-derived compatibility/reference cases. It is not the default headline ranking report.
+
+For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step comparisons, use `results/asset_benchmark_report.md`.
 
 ## Provenance
 
-- `nmpc-bench`: `defe33153572c0ebc939d95d265c1c3af3912bfd`
+- `nmpc-bench`: `b4d558320cbce9851d46728cacec386bdc15d1b9`
 - `acados`: `third_party/acados` at `47b961bcaf493de59048918ffaa585181466ea65`
 - `MiniSolver`: `third_party/MiniSolver` at `dfb1861de4ca580b35288cab5bdc25857ec2f26e`
   - branch: `master`
@@ -28,11 +32,13 @@ Date: 2026-05-02
 
 ## Fairness Notes
 
+- This official-case report is compatibility/reference evidence. Use `results/asset_benchmark_report.md` for the current same-condition, end-to-end solver ranking.
 - `acados` is benchmarked through official Python export plus compiled C runtime. Python codegen is not included in runtime timings.
 - `MiniSolver` is benchmarked as a native in-process C++ target, not through an adapter layer.
 - `CasADi` is benchmarked through a pre-built `nlpsol('sqpmethod')` graph with `qrqp` as the QP backend. Model construction is excluded from the per-step timings; the timed region is the repeated SQP solve call in the closed loop.
 - `pendulum_on_cart`, `race_cars`, and `quadrotor_nav` use RTI-style single-iteration closed-loop runs on both sides.
 - `chain_mass` uses full SQP-style solves on both sides, matching the official acados setup.
+- `race_cars` and `quadrotor_nav` contain piecewise track functions. Current MiniSolver Python MiniModel builds do not expose `ppoly`, so the MiniSolver runs use checked-in generated C++ models until a callback-backed path with owned first-derivative smoothing is validated.
 - `race_cars` and `quadrotor_nav` are official closed-loop cases with solver-dependent early termination. `steps` therefore measure executed closed-loop steps, not a fixed common horizon count.
 
 ## Pairwise Comparison

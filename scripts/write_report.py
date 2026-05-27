@@ -115,11 +115,13 @@ def render_case_notes() -> list[str]:
     return [
         "## Fairness Notes",
         "",
+        "- This official-case report is compatibility/reference evidence. Use `results/asset_benchmark_report.md` for the current same-condition, end-to-end solver ranking.",
         "- `acados` is benchmarked through official Python export plus compiled C runtime. Python codegen is not included in runtime timings.",
         "- `MiniSolver` is benchmarked as a native in-process C++ target, not through an adapter layer.",
         "- `CasADi` is benchmarked through a pre-built `nlpsol('sqpmethod')` graph with `qrqp` as the QP backend. Model construction is excluded from the per-step timings; the timed region is the repeated SQP solve call in the closed loop.",
         "- `pendulum_on_cart`, `race_cars`, and `quadrotor_nav` use RTI-style single-iteration closed-loop runs on both sides.",
         "- `chain_mass` uses full SQP-style solves on both sides, matching the official acados setup.",
+        "- `race_cars` and `quadrotor_nav` contain piecewise track functions. Current MiniSolver Python MiniModel builds do not expose `ppoly`, so the MiniSolver runs use checked-in generated C++ models until a callback-backed path with owned first-derivative smoothing is validated.",
         "- `race_cars` and `quadrotor_nav` are official closed-loop cases with solver-dependent early termination. `steps` therefore measure executed closed-loop steps, not a fixed common horizon count.",
         "",
     ]
@@ -182,9 +184,13 @@ def main() -> int:
         minisolver_commit = try_run_git(["rev-parse", "HEAD"], minisolver_dir) or "unknown"
 
     lines = [
-        "# Latest Benchmark Report",
+        "# Latest Official Compatibility Report",
         "",
         f"Date: {date.today().isoformat()}",
+        "",
+        "This report covers official acados-derived compatibility/reference cases. It is not the default headline ranking report.",
+        "",
+        "For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step comparisons, use `results/asset_benchmark_report.md`.",
         "",
         "## Provenance",
         "",

@@ -185,10 +185,13 @@ def generate_native_model(case_name: str, minisolver_source_dir: Path, acados_re
         header = checked_in_ppoly_headers[case_name]
         if not header.exists():
             raise FileNotFoundError(
-                f"{case_name} requires checked-in ppoly generated asset because current MiniModel "
-                f"does not expose ppoly(): {header}"
+                f"{case_name} requires a piecewise/callback-backed generated model because current "
+                f"MiniModel does not expose ppoly(): {header}"
             )
-        print(f"+ using checked-in generated model {header} (MiniModel ppoly unavailable)")
+        print(
+            f"+ using checked-in generated model {header} "
+            f"(MiniModel ppoly unavailable; callback smoothing must be supplied by the model owner)"
+        )
         return
     script_path = script_map[case_name]
     env = os.environ.copy()
