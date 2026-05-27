@@ -1,10 +1,13 @@
 #pragma once
 #include "minisolver/core/types.h"
 #include "minisolver/core/solver_options.h"
-#include "minisolver/core/matrix_defs.h"
+#include "minisolver/matrix/matrix_defs.h"
+#include "minisolver/integrator/numerical_jacobian.h"
+#include <cstdint>
 #include <cmath>
 #include <string>
 #include <array>
+#include <stdexcept>
 
 namespace minisolver {
 
@@ -14,6 +17,10 @@ struct DoubleIntegrator3DTrackingModel {
     static const int NU=3;
     static const int NC=6;
     static const int NP=6;
+
+    static constexpr std::uint64_t model_fingerprint = 0x9f664c9e7d7936cbull;
+
+    static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
     static constexpr std::array<double, NC> constraint_weights = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     static constexpr std::array<int, NC> constraint_types = {0, 0, 0, 0, 0, 0};
@@ -50,7 +57,7 @@ struct DoubleIntegrator3DTrackingModel {
     static MSVec<T, NX> dynamics_continuous(
         const MSVec<T, NX>& x_in,
         const MSVec<T, NU>& u_in,
-        const MSVec<T, NP>& p_in) 
+        const MSVec<T, NP>& p_in)
     {
         T vx = x_in(3);
         T vy = x_in(4);
@@ -71,32 +78,63 @@ struct DoubleIntegrator3DTrackingModel {
 
     }
 
+    // --- Continuous Dynamics Jacobians (for implicit integrators) ---
+    template<typename T>
+    static ContinuousJacobians<T, NX, NU> jacobian_continuous(
+        const MSVec<T, NX>& x_in,
+        const MSVec<T, NU>& u_in,
+        const MSVec<T, NP>& p_in)
+    {
+        (void)x_in;
+        (void)u_in;
+        (void)p_in;
+
+        ContinuousJacobians<T, NX, NU> jac;
+
+        // Clear continuous Jacobian packets; nonzero entries are assigned below.
+        jac.Jx.setZero();
+        jac.Ju.setZero();
+
+        // Jx = df/dx
+        jac.Jx(0,3) = 1;
+        jac.Jx(1,4) = 1;
+        jac.Jx(2,5) = 1;
+
+        // Ju = df/du
+        jac.Ju(3,0) = 1;
+        jac.Ju(4,1) = 1;
+        jac.Ju(5,2) = 1;
+
+        return jac;
+
+    }
+
     // --- Integrator Interface ---
     template<typename T>
     static MSVec<T, NX> integrate(
-        const MSVec<T, NX>& x,
-        const MSVec<T, NU>& u,
-        const MSVec<T, NP>& p,
+        const MSVec<T, NX>& x_in,
+        const MSVec<T, NU>& u_in,
+        const MSVec<T, NP>& p_in,
         double dt,
         IntegratorType type)
     {
         switch(type) {
-            case IntegratorType::EULER_EXPLICIT: 
-                return x + dynamics_continuous(x, u, p) * dt;
-                
-            case IntegratorType::RK2_EXPLICIT: 
+            case IntegratorType::EULER_EXPLICIT:
+                return x_in + dynamics_continuous(x_in, u_in, p_in) * dt;
+
+            case IntegratorType::RK2_EXPLICIT:
             {
-               auto k1 = dynamics_continuous(x, u, p);
-               auto k2 = dynamics_continuous<T>(x + k1 * (0.5 * dt), u, p);
-               return x + k2 * dt;
+               auto k1 = dynamics_continuous(x_in, u_in, p_in);
+               auto k2 = dynamics_continuous<T>(x_in + k1 * (0.5 * dt), u_in, p_in);
+               return x_in + k2 * dt;
             }
 
             case IntegratorType::EULER_IMPLICIT:
             {
                 // Simple Fixed-Point Iteration for x_next = x + f(x_next, u) * dt
-                MSVec<T, NX> x_next = x; // Guess
+                MSVec<T, NX> x_next = x_in; // Guess
                 for(int i=0; i<5; ++i) {
-                    x_next = x + dynamics_continuous(x_next, u, p) * dt;
+                    x_next = x_in + dynamics_continuous(x_next, u_in, p_in) * dt;
                 }
                 return x_next;
             }
@@ -104,23 +142,28 @@ struct DoubleIntegrator3DTrackingModel {
             case IntegratorType::RK2_IMPLICIT:
             {
                 // Implicit Midpoint: k = f(x + 0.5*dt*k). x_next = x + dt*k
-                MSVec<T, NX> k = dynamics_continuous(x, u, p); // Guess k0
+                MSVec<T, NX> k = dynamics_continuous(x_in, u_in, p_in); // Guess k0
                 for(int i=0; i<5; ++i) {
-                    k = dynamics_continuous<T>(x + k * (0.5 * dt), u, p);
+                    k = dynamics_continuous<T>(x_in + k * (0.5 * dt), u_in, p_in);
                 }
-                return x + k * dt;
+                return x_in + k * dt;
             }
 
-            // Fallback for others to RK4 or appropriate handling
-            default: // RK4 Explicit (Default)
+            case IntegratorType::RK4_EXPLICIT:
+            case IntegratorType::RK4_IMPLICIT:
             {
-               auto k1 = dynamics_continuous(x, u, p);
-               auto k2 = dynamics_continuous<T>(x + k1 * (0.5 * dt), u, p);
-               auto k3 = dynamics_continuous<T>(x + k2 * (0.5 * dt), u, p);
-               auto k4 = dynamics_continuous<T>(x + k3 * dt, u, p);
-               return x + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0);
+               auto k1 = dynamics_continuous(x_in, u_in, p_in);
+               auto k2 = dynamics_continuous<T>(x_in + k1 * (0.5 * dt), u_in, p_in);
+               auto k3 = dynamics_continuous<T>(x_in + k2 * (0.5 * dt), u_in, p_in);
+               auto k4 = dynamics_continuous<T>(x_in + k3 * dt, u_in, p_in);
+               return x_in + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0);
             }
+
+            case IntegratorType::DISCRETE:
+                throw std::invalid_argument("DISCRETE integrator requires Next(state) dynamics");
         }
+        throw std::invalid_argument("Unsupported integrator type");
+
     }
 
     // --- 1. Compute Dynamics (f_resid, A, B) ---
@@ -146,6 +189,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.f_resid(3) = ax*dt + vx;
                 kp.f_resid(4) = ay*dt + vy;
                 kp.f_resid(5) = az*dt + vz;
+
+                // Clear dynamics Jacobian A; nonzero entries are assigned below.
                 kp.A.setZero();
                 kp.A(0,0) = 1;
                 kp.A(0,3) = dt;
@@ -156,6 +201,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.A(3,3) = 1;
                 kp.A(4,4) = 1;
                 kp.A(5,5) = 1;
+
+                // Clear dynamics Jacobian B; nonzero entries are assigned below.
                 kp.B.setZero();
                 kp.B(3,0) = dt;
                 kp.B(4,1) = dt;
@@ -175,6 +222,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.f_resid(3) = tmp_d0 + vx;
                 kp.f_resid(4) = tmp_d1 + vy;
                 kp.f_resid(5) = tmp_d2 + vz;
+
+                // Clear dynamics Jacobian A; nonzero entries are assigned below.
                 kp.A.setZero();
                 kp.A(0,0) = 1;
                 kp.A(0,3) = dt;
@@ -185,6 +234,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.A(3,3) = 1;
                 kp.A(4,4) = 1;
                 kp.A(5,5) = 1;
+
+                // Clear dynamics Jacobian B; nonzero entries are assigned below.
                 kp.B.setZero();
                 kp.B(0,0) = tmp_d3;
                 kp.B(1,1) = tmp_d3;
@@ -207,6 +258,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.f_resid(3) = ax*tmp_d2 + vx;
                 kp.f_resid(4) = ay*tmp_d2 + vy;
                 kp.f_resid(5) = az*tmp_d2 + vz;
+
+                // Clear dynamics Jacobian A; nonzero entries are assigned below.
                 kp.A.setZero();
                 kp.A(0,0) = 1;
                 kp.A(0,3) = tmp_d2;
@@ -217,6 +270,8 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.A(3,3) = 1;
                 kp.A(4,4) = 1;
                 kp.A(5,5) = 1;
+
+                // Clear dynamics Jacobian B; nonzero entries are assigned below.
                 kp.B.setZero();
                 kp.B(0,0) = tmp_d3;
                 kp.B(1,1) = tmp_d3;
@@ -226,20 +281,25 @@ struct DoubleIntegrator3DTrackingModel {
                 kp.B(5,2) = tmp_d2;
                 break;
             }
-            default:
-                break;
+            case IntegratorType::DISCRETE:
+                throw std::invalid_argument("DISCRETE integrator requires Next(state) dynamics");
         }
     }
 
-    // --- 2. Compute Constraints (g_val, C, D) ---
+    // --- 2. Compute QP/IPM Constraints (g_val, C, D) ---
     template<typename T>
-    static void compute_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+    static void compute_qp_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
         T ax = kp.u(0);
         T ay = kp.u(1);
         T az = kp.u(2);
 
         // --- Special Constraints Pre-Calculation ---
 
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_val.setZero();
+        kp.C.setZero();
+        kp.D.setZero();
 
         // g_val
         kp.g_val(0,0) = ax - 15.0;
@@ -250,62 +310,102 @@ struct DoubleIntegrator3DTrackingModel {
         kp.g_val(5,0) = -az - 15.0;
 
         // C
-        kp.C(0,0) = 0;
-        kp.C(0,1) = 0;
-        kp.C(0,2) = 0;
-        kp.C(0,3) = 0;
-        kp.C(0,4) = 0;
-        kp.C(0,5) = 0;
-        kp.C(1,0) = 0;
-        kp.C(1,1) = 0;
-        kp.C(1,2) = 0;
-        kp.C(1,3) = 0;
-        kp.C(1,4) = 0;
-        kp.C(1,5) = 0;
-        kp.C(2,0) = 0;
-        kp.C(2,1) = 0;
-        kp.C(2,2) = 0;
-        kp.C(2,3) = 0;
-        kp.C(2,4) = 0;
-        kp.C(2,5) = 0;
-        kp.C(3,0) = 0;
-        kp.C(3,1) = 0;
-        kp.C(3,2) = 0;
-        kp.C(3,3) = 0;
-        kp.C(3,4) = 0;
-        kp.C(3,5) = 0;
-        kp.C(4,0) = 0;
-        kp.C(4,1) = 0;
-        kp.C(4,2) = 0;
-        kp.C(4,3) = 0;
-        kp.C(4,4) = 0;
-        kp.C(4,5) = 0;
-        kp.C(5,0) = 0;
-        kp.C(5,1) = 0;
-        kp.C(5,2) = 0;
-        kp.C(5,3) = 0;
-        kp.C(5,4) = 0;
-        kp.C(5,5) = 0;
 
         // D
         kp.D(0,0) = 1;
-        kp.D(0,1) = 0;
-        kp.D(0,2) = 0;
         kp.D(1,0) = -1;
-        kp.D(1,1) = 0;
-        kp.D(1,2) = 0;
-        kp.D(2,0) = 0;
         kp.D(2,1) = 1;
-        kp.D(2,2) = 0;
-        kp.D(3,0) = 0;
         kp.D(3,1) = -1;
-        kp.D(3,2) = 0;
-        kp.D(4,0) = 0;
-        kp.D(4,1) = 0;
         kp.D(4,2) = 1;
-        kp.D(5,0) = 0;
-        kp.D(5,1) = 0;
         kp.D(5,2) = -1;
+
+    }
+
+    // Legacy alias for hand-written code that still calls compute_constraints().
+    template<typename T>
+    static void compute_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_qp_constraints(kp);
+    }
+
+    // --- 2.1 Compute True Constraints (g_true) ---
+    template<typename T>
+    static void compute_true_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        T ax = kp.u(0);
+        T ay = kp.u(1);
+        T az = kp.u(2);
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_true.setZero();
+
+        // g_true
+        kp.g_true(0,0) = ax - 15.0;
+        kp.g_true(1,0) = -ax - 15.0;
+        kp.g_true(2,0) = ay - 15.0;
+        kp.g_true(3,0) = -ay - 15.0;
+        kp.g_true(4,0) = az - 15.0;
+        kp.g_true(5,0) = -az - 15.0;
+
+    }
+
+    // --- 2.5 Terminal Stage: x-only projection of QP/IPM constraints ---
+    template<typename T>
+    static void compute_terminal_qp_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+
+        // --- Special Constraints Pre-Calculation ---
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_val.setZero();
+        kp.C.setZero();
+        kp.D.setZero();
+
+        // g_val
+        kp.g_val(0,0) = -15.0;
+        kp.g_val(1,0) = -15.0;
+        kp.g_val(2,0) = -15.0;
+        kp.g_val(3,0) = -15.0;
+        kp.g_val(4,0) = -15.0;
+        kp.g_val(5,0) = -15.0;
+
+        // C
+
+        // D
+
+    }
+
+    // Legacy alias for hand-written code that still calls compute_terminal_constraints().
+    template<typename T>
+    static void compute_terminal_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_terminal_qp_constraints(kp);
+    }
+
+    // --- 2.5.1 Terminal Stage: true x-only constraint residuals ---
+    template<typename T>
+    static void compute_terminal_true_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.g_true.setZero();
+
+        // g_true
+        kp.g_true(0,0) = -15.0;
+        kp.g_true(1,0) = -15.0;
+        kp.g_true(2,0) = -15.0;
+        kp.g_true(3,0) = -15.0;
+        kp.g_true(4,0) = -15.0;
+        kp.g_true(5,0) = -15.0;
+
+    }
+
+    // --- 2.6 SOC correction constraints ---
+    template<typename T>
+    static void compute_soc_constraints(
+        const KnotPoint<T,NX,NU,NC,NP>& active_kp,
+        KnotPoint<T,NX,NU,NC,NP>& trial_kp) {
+        compute_qp_constraints(trial_kp);
+        compute_true_constraints(trial_kp);
+        (void)active_kp;
 
     }
 
@@ -329,6 +429,10 @@ struct DoubleIntegrator3DTrackingModel {
         T vz_ref = kp.p(5);
 
 
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.q.setZero();
+        kp.r.setZero();
+
         // q
         kp.q(0,0) = 30.0*x - 30.0*x_ref;
         kp.q(1,0) = 30.0*y - 30.0*y_ref;
@@ -342,74 +446,25 @@ struct DoubleIntegrator3DTrackingModel {
         kp.r(1,0) = 0.10000000000000001*ay;
         kp.r(2,0) = 0.10000000000000001*az;
 
+        // Clear Hessian packets; nonzero entries are assigned below.
+        kp.Q.setZero();
+        kp.R.setZero();
+        kp.H.setZero();
+
         // Q (Mode 0=GN, 1=Exact)
         kp.Q(0,0) = 30.0;
-        kp.Q(0,1) = 0;
-        kp.Q(0,2) = 0;
-        kp.Q(0,3) = 0;
-        kp.Q(0,4) = 0;
-        kp.Q(0,5) = 0;
-        kp.Q(1,0) = 0;
         kp.Q(1,1) = 30.0;
-        kp.Q(1,2) = 0;
-        kp.Q(1,3) = 0;
-        kp.Q(1,4) = 0;
-        kp.Q(1,5) = 0;
-        kp.Q(2,0) = 0;
-        kp.Q(2,1) = 0;
         kp.Q(2,2) = 30.0;
-        kp.Q(2,3) = 0;
-        kp.Q(2,4) = 0;
-        kp.Q(2,5) = 0;
-        kp.Q(3,0) = 0;
-        kp.Q(3,1) = 0;
-        kp.Q(3,2) = 0;
         kp.Q(3,3) = 5.0;
-        kp.Q(3,4) = 0;
-        kp.Q(3,5) = 0;
-        kp.Q(4,0) = 0;
-        kp.Q(4,1) = 0;
-        kp.Q(4,2) = 0;
-        kp.Q(4,3) = 0;
         kp.Q(4,4) = 5.0;
-        kp.Q(4,5) = 0;
-        kp.Q(5,0) = 0;
-        kp.Q(5,1) = 0;
-        kp.Q(5,2) = 0;
-        kp.Q(5,3) = 0;
-        kp.Q(5,4) = 0;
         kp.Q(5,5) = 5.0;
 
         // R (Mode 0=GN, 1=Exact)
         kp.R(0,0) = 0.10000000000000001;
-        kp.R(0,1) = 0;
-        kp.R(0,2) = 0;
-        kp.R(1,0) = 0;
         kp.R(1,1) = 0.10000000000000001;
-        kp.R(1,2) = 0;
-        kp.R(2,0) = 0;
-        kp.R(2,1) = 0;
         kp.R(2,2) = 0.10000000000000001;
 
         // H (Mode 0=GN, 1=Exact)
-        kp.H(0,0) = 0;
-        kp.H(0,1) = 0;
-        kp.H(0,2) = 0;
-        kp.H(0,3) = 0;
-        kp.H(0,4) = 0;
-        kp.H(0,5) = 0;
-        kp.H(1,0) = 0;
-        kp.H(1,1) = 0;
-        kp.H(1,2) = 0;
-        kp.H(1,3) = 0;
-        kp.H(1,4) = 0;
-        kp.H(1,5) = 0;
-        kp.H(2,0) = 0;
-        kp.H(2,1) = 0;
-        kp.H(2,2) = 0;
-        kp.H(2,3) = 0;
-        kp.H(2,4) = 0;
-        kp.H(2,5) = 0;
 
         kp.cost = 0.050000000000000003*pow(ax, 2) + 0.050000000000000003*pow(ay, 2) + 0.050000000000000003*pow(az, 2) + 2.5*pow(vx - vx_ref, 2) + 2.5*pow(vy - vy_ref, 2) + 2.5*pow(vz - vz_ref, 2) + 15.0*pow(x - x_ref, 2) + 15.0*pow(y - y_ref, 2) + 15.0*pow(z - z_ref, 2);
     }
@@ -430,31 +485,95 @@ template<typename T>
     }
 
 
+    // --- 3.5 Terminal Cost (u projected to zero) ---
+    template<typename T, int Mode>
+    static void compute_terminal_cost_impl(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        T x = kp.x(0);
+        T y = kp.x(1);
+        T z = kp.x(2);
+        T vx = kp.x(3);
+        T vy = kp.x(4);
+        T vz = kp.x(5);
+        T x_ref = kp.p(0);
+        T y_ref = kp.p(1);
+        T z_ref = kp.p(2);
+        T vx_ref = kp.p(3);
+        T vy_ref = kp.p(4);
+        T vz_ref = kp.p(5);
+
+
+        // Clear generated output packets; nonzero entries are assigned below.
+        kp.q.setZero();
+        kp.r.setZero();
+
+        // q
+        kp.q(0,0) = 30.0*x - 30.0*x_ref;
+        kp.q(1,0) = 30.0*y - 30.0*y_ref;
+        kp.q(2,0) = 30.0*z - 30.0*z_ref;
+        kp.q(3,0) = 5.0*vx - 5.0*vx_ref;
+        kp.q(4,0) = 5.0*vy - 5.0*vy_ref;
+        kp.q(5,0) = 5.0*vz - 5.0*vz_ref;
+
+        // r
+
+        // Clear Hessian packets; nonzero entries are assigned below.
+        kp.Q.setZero();
+        kp.R.setZero();
+        kp.H.setZero();
+
+        // terminal Q (Mode 0=GN, 1=Exact)
+        kp.Q(0,0) = 30.0;
+        kp.Q(1,1) = 30.0;
+        kp.Q(2,2) = 30.0;
+        kp.Q(3,3) = 5.0;
+        kp.Q(4,4) = 5.0;
+        kp.Q(5,5) = 5.0;
+
+        // terminal R (Mode 0=GN, 1=Exact)
+
+        // terminal H (Mode 0=GN, 1=Exact)
+
+        kp.cost = 2.5*pow(vx - vx_ref, 2) + 2.5*pow(vy - vy_ref, 2) + 2.5*pow(vz - vz_ref, 2) + 15.0*pow(x - x_ref, 2) + 15.0*pow(y - y_ref, 2) + 15.0*pow(z - z_ref, 2);
+    }
+
+    template<typename T>
+    static void compute_terminal_cost_gn(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_terminal_cost_impl<T, 0>(kp);
+    }
+
+    template<typename T>
+    static void compute_terminal_cost_exact(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        compute_terminal_cost_impl<T, 1>(kp);
+    }
+
+
     // --- 4. Compute All (Convenience) ---
     template<typename T>
     static void compute(KnotPoint<T,NX,NU,NC,NP>& kp, IntegratorType type, double dt) {
         compute_dynamics(kp, type, dt);
-        compute_constraints(kp);
-        compute_cost(kp); // Default GN
+        compute_qp_constraints(kp);
+        compute_true_constraints(kp);
+        compute_cost(kp); // Default exact Hessian for backward compatibility.
     }
 
     template<typename T>
     static void compute_exact(KnotPoint<T,NX,NU,NC,NP>& kp, IntegratorType type, double dt) {
         compute_dynamics(kp, type, dt);
-        compute_constraints(kp);
+        compute_qp_constraints(kp);
+        compute_true_constraints(kp);
         compute_cost_exact(kp); // Exact Hessian
     }
 
     // --- 5. Sparse Kernels (Generated) ---
-    
+
     // --- 6. Fused Riccati Kernel (Generated) ---
     // Updates kp.Q_bar, R_bar, H_bar, q_bar, r_bar in one go.
     // Uses Vxx, Vx from next step.
     template<typename T>
     static void compute_fused_riccati_step(
-        const MSMat<T, NX, NX>& Vxx, 
+        const MSMat<T, NX, NX>& Vxx,
         const MSVec<T, NX>& Vx,
-        KnotPoint<T,NX,NU,NC,NP>& kp) 
+        KnotPoint<T,NX,NU,NC,NP>& kp)
     {
         T P_0_0 = Vxx(0,0);
         T P_0_1 = Vxx(0,1);
@@ -608,6 +727,6 @@ template<typename T>
         kp.R_bar(2,1) = kp.R_bar(1,2);
 
     }
-    
+
 };
 }

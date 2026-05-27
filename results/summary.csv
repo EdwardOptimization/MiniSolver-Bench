@@ -8,6 +8,8 @@ avg_abs_b,avg_abs_n,avg_iterations,avg_speed,avg_tracking_error,backend,backend_
 ,,1.0,,,acados,acados,pendulum_on_cart,results/raw/acados/pendulum_on_cart.csv,0.024740132,,,1.471,0.5365,,0.8654,100,1.0
 1.654004533844189e-05,5.49982343550447e-05,,,,acados,acados,quadrotor_nav,results/raw/acados/quadrotor_nav.csv,,,,3.715,2.254,,2.3207500000000003,1566,1.0
 ,,,1.3520701275348836,,acados,acados,race_cars,results/raw/acados/race_cars.csv,,,,1.761,0.742,,0.9634999999999996,344,1.0
+,,2.2783505154639174,,195.2601854603091,altro,altro,data_driven_mpc_lemniscate_tracking,results/raw/altro/data_driven_mpc_lemniscate_tracking.csv,,1006.3954445512308,3.53391888943122e-05,12.904232,9.7202115,,10.00433845,500,0.388
+,,2.0,,0.027385818469444222,altro,altro,data_driven_mpc_loop_tracking,results/raw/altro/data_driven_mpc_loop_tracking.csv,,0.0023296386130704718,0.0,0.272993,0.148477,,0.1703584999999999,500,1.0
 ,,2.32,,,casadi,casadi,chain_mass,results/raw/casadi/chain_mass.csv,,,,410.568346968,368.493436021,-0.000475765,391.510055843,25,1.0
 ,,1.002,,0.1044797447512468,casadi,casadi,data_driven_mpc_lemniscate_tracking,results/raw/casadi/data_driven_mpc_lemniscate_tracking.csv,,0.001977833919885191,1.7763568394002505e-15,8.293971,6.484103,,7.783260950000001,500,1.0
 ,,1.0,,0.02738583466981092,casadi,casadi,data_driven_mpc_loop_tracking,results/raw/casadi/data_driven_mpc_loop_tracking.csv,,0.002329638340640588,0.0,7.785717,6.4251685,,6.50444955,500,1.0
@@ -19,12 +21,12 @@ avg_abs_b,avg_abs_n,avg_iterations,avg_speed,avg_tracking_error,backend,backend_
 ,,,nan,,casadi,casadi,race_cars,results/raw/casadi/race_cars.csv,,,,2891.644170973,2.514391497,,2.55963101515,500,0.0
 ,,7.452,,0.10447971112051715,clarabel,clarabel,data_driven_mpc_lemniscate_tracking,results/raw/clarabel/data_driven_mpc_lemniscate_tracking.csv,,0.001977833922890422,0.0,0.7388709345832467,0.33702049404382706,,0.5778292135801166,500,1.0
 ,,6.596,,0.027385835542498564,clarabel,clarabel,data_driven_mpc_loop_tracking,results/raw/clarabel/data_driven_mpc_loop_tracking.csv,,0.0023296383442467606,0.0,0.44279301073402166,0.32327353255823255,,0.40722431149333715,500,1.0
-,,3.56,,,minisolver,minisolver,chain_mass,results/raw/minisolver/chain_mass.csv,,,0.0,6.24327,2.42377,0.00112253,4.218345999999999,25,1.0
+,,3.52,,,minisolver,minisolver,chain_mass,results/raw/minisolver/chain_mass.csv,,,0.0,5.93721,2.27817,0.00112253,3.925457999999998,25,1.0
 ,,3.374,,0.10447970191196604,minisolver,minisolver,data_driven_mpc_lemniscate_tracking,results/raw/minisolver/data_driven_mpc_lemniscate_tracking.csv,,0.00197804665025717,0.0,0.189789,0.041137,,0.07871249999999999,500,1.0
 ,,2.886,,0.027385885026416968,minisolver,minisolver,data_driven_mpc_loop_tracking,results/raw/minisolver/data_driven_mpc_loop_tracking.csv,,0.002329883270084364,0.0,0.095101,0.041172,,0.04374855,500,1.0
 ,,2.825,2.4966697520508596,0.01006547759697684,minisolver,minisolver,mpcc_track_following,results/raw/minisolver/mpcc_track_following.csv,,0.0025830463216603284,0.0,0.162967,0.1019525,,0.13681514999999997,400,1.0
 ,,2.25,7.9993091048848495,0.0010613122712571394,minisolver,minisolver,nonlinear_mpcc_fssim_following,results/raw/minisolver/nonlinear_mpcc_fssim_following.csv,,0.0006308284565203259,0.0,1.466961,0.114802,,0.17877759999999998,1200,1.0
 ,,2.615,5.999177861381114,0.002089368513337672,minisolver,minisolver,nonlinear_mpcc_porto_following,results/raw/minisolver/nonlinear_mpcc_porto_following.csv,,6.999424118563691e-05,0.0,1.811157,0.1234785,,0.14361889999999988,600,1.0
-,,1.0,,,minisolver,minisolver,pendulum_on_cart,results/raw/minisolver/pendulum_on_cart.csv,0.00160175,,0.0,0.087069,0.0371485,,0.0411115,100,1.0
-0.0008697660586217949,0.03997257332796026,1.0,,,minisolver,minisolver,quadrotor_nav,results/raw/minisolver/quadrotor_nav.csv,,,0.0,5.00912,1.347,,1.4328149999999997,1560,1.0
-,,1.0,1.5427678465999999,,minisolver,minisolver,race_cars,results/raw/minisolver/race_cars.csv,,,0.133403,0.493831,0.41759500000000005,,0.43933445,500,0.906
+,,1.0,,,minisolver,minisolver,pendulum_on_cart,results/raw/minisolver/pendulum_on_cart.csv,0.00160175,,0.0,0.077421,0.0366205,,0.0403815,100,1.0
+0.0008697660586217949,0.03997257332796026,1.0,,,minisolver,minisolver,quadrotor_nav,results/raw/minisolver/quadrotor_nav.csv,,,0.0,1.63718,1.308365,,1.3503079999999998,1560,1.0
+,,1.0,1.54816284444,,minisolver,minisolver,race_cars,results/raw/minisolver/race_cars.csv,,,0.0700106,0.511706,0.401139,,0.42808245,500,0.906

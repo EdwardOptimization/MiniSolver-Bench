@@ -43,6 +43,8 @@ def is_success_row(row: dict[str, str], backend: str) -> bool:
         # In acados, hitting MAXITER still returns a usable iterate. For closed-loop MPC
         # benchmarks we count both SUCCESS (0) and MAXITER (2) as successful steps.
         return status in {"0", "2"}
+    if backend == "altro":
+        return status == "Solved"
     return status == "0"
 
 
@@ -59,7 +61,11 @@ def summarize_file(path: Path) -> dict[str, object] | None:
             return json.load(fh)
     if path.suffix != ".csv" or path.name.endswith("_summary.csv"):
         return None
-    if path.stem.endswith("_smoke") or path.stem.endswith("_codegen_smoke"):
+    if (
+        path.stem.endswith("_smoke")
+        or path.stem.endswith("_codegen_smoke")
+        or path.stem.endswith("_current_check")
+    ):
         return None
 
     source_backend = path.parent.name
@@ -143,7 +149,7 @@ def main() -> int:
     SUMMARY_CSV.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = sorted({key for record in records for key in record.keys()})
     with SUMMARY_CSV.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         writer.writerows(records)
 

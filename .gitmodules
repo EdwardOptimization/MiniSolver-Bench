@@ -4,3 +4,6 @@
 [submodule "third_party/acados"]
 	path = third_party/acados
 	url = https://github.com/acados/acados.git
+[submodule "third_party/ALTRO"]
+	path = third_party/ALTRO
+	url = https://github.com/RoboticExplorationLab/ALTRO.git

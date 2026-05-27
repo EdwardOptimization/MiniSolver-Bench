@@ -12,6 +12,8 @@ results/raw/**
 !results/raw/acados/.gitkeep
 !results/raw/minisolver/
 !results/raw/minisolver/.gitkeep
+!results/raw/altro/
+!results/raw/altro/.gitkeep
 !results/raw/ipopt/
 !results/raw/ipopt/.gitkeep
 !results/raw/clarabel/

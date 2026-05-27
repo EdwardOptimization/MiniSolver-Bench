@@ -28,6 +28,7 @@ Fairness rules in this repository:
 - `targets/minisolver/`: MiniSolver native benchmark target and local runner source
 - `backends/acados/`: acados export/build/run adapter
 - `backends/casadi/`: CasADi SQP adapter
+- `backends/altro/`: ALTRO C++ adapter for robotics asset candidates
 - `assets/`: canonical external reference assets imported from public MPC repositories
 - `third_party/`: solver checkouts managed as git submodules
 - `results/raw/`: ignored raw benchmark output
@@ -48,6 +49,7 @@ Fairness rules in this repository:
 - `acados`
 - `casadi`
 - `clarabel` for convex asset cases only
+- `altro` for convex robotics asset cases only
 
 ## External Reference Assets
 
@@ -147,6 +149,19 @@ Run all convex Clarabel asset candidates:
 python3 backends/clarabel/run_candidates.py
 ```
 
+Run all ALTRO robotics asset candidates:
+
+```bash
+python3 backends/altro/run_candidates.py
+```
+
+Refresh the same-case end-to-end solver comparison report:
+
+```bash
+python3 scripts/summarize_results.py
+python3 scripts/write_asset_benchmark_report.py
+```
+
 Run a single asset-derived candidate:
 
 ```bash
@@ -155,7 +170,7 @@ python3 targets/minisolver/run_case_candidate.py \
   --minisolver-source-dir /path/to/MiniSolver
 ```
 
-Refresh summary and reports after asset benchmark runs:
+Refresh all summary and asset reports after benchmark runs:
 
 ```bash
 python3 scripts/summarize_results.py
@@ -206,4 +221,3 @@ Regenerate ground-truth (offline):
 python3 -m pip install -r tools/requirements.txt
 python3 tools/generate_gt.py --scenario-root scenarios
 ```
-

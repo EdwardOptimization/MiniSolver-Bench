@@ -26,6 +26,13 @@ set_property(CACHE MINISOLVER_CASE PROPERTY STRINGS
 
 set(ACADOS_OUTPUT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/out/acados" CACHE PATH "Path to exported acados official-case assets")
 
+set(DEFAULT_ALTRO_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ALTRO")
+if(EXISTS "${DEFAULT_ALTRO_SOURCE_DIR}/CMakeLists.txt")
+    set(ALTRO_SOURCE_DIR "${DEFAULT_ALTRO_SOURCE_DIR}" CACHE PATH "Path to an ALTRO checkout")
+else()
+    set(ALTRO_SOURCE_DIR "" CACHE PATH "Path to an ALTRO checkout")
+endif()
+
 set(DEFAULT_MINISOLVER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/MiniSolver")
 if(EXISTS "${DEFAULT_MINISOLVER_SOURCE_DIR}/CMakeLists.txt")
     set(MINISOLVER_SOURCE_DIR "${DEFAULT_MINISOLVER_SOURCE_DIR}" CACHE PATH "Path to a MiniSolver checkout")
@@ -158,4 +165,33 @@ if(CASADI_ROOT)
     target_compile_definitions(casadi_double_integrator_3d_benchmark PRIVATE _GLIBCXX_USE_CXX11_ABI=0)
     target_link_libraries(casadi_double_integrator_3d_benchmark PRIVATE "${CASADI_LIBRARY}")
     set_target_properties(casadi_double_integrator_3d_benchmark PROPERTIES BUILD_RPATH "${CASADI_ROOT}")
+endif()
+
+if(ALTRO_SOURCE_DIR)
+    if(NOT EXISTS "${ALTRO_SOURCE_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR "ALTRO_SOURCE_DIR does not point to an ALTRO checkout: ${ALTRO_SOURCE_DIR}")
+    endif()
+    set(ALTRO_BUILD_TESTS OFF CACHE BOOL "Build tests for altro" FORCE)
+    set(ALTRO_BUILD_DOCS OFF CACHE BOOL "Build documentation for altro" FORCE)
+    set(ALTRO_ENABLE_ARDUINO_LIB_INSTALL OFF CACHE BOOL "Add the install_arduino_lib target" FORCE)
+    add_subdirectory("${ALTRO_SOURCE_DIR}" _deps/altro EXCLUDE_FROM_ALL)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        foreach(target_name common constraints problem ilqr augmented_lagrangian altro_altro2 altro_impl altrocpp_interface)
+            if(TARGET ${target_name})
+                target_compile_options(${target_name} PRIVATE -Wno-error=dangling-reference)
+            endif()
+        endforeach()
+    endif()
+
+    add_executable(altro_double_integrator_3d_benchmark
+        backends/altro/src/double_integrator_3d_benchmark.cpp
+    )
+    target_include_directories(altro_double_integrator_3d_benchmark PRIVATE
+        "${NMPC_BENCH_COMMON_INCLUDE_DIR}"
+        "${CMAKE_BINARY_DIR}/_deps/altrocpp-src"
+    )
+    target_link_libraries(altro_double_integrator_3d_benchmark PRIVATE altro::altro)
+    if(TARGET Eigen3::Eigen)
+        target_link_libraries(altro_double_integrator_3d_benchmark PRIVATE Eigen3::Eigen)
+    endif()
 endif()

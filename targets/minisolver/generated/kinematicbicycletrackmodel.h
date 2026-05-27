@@ -15,6 +15,8 @@ struct KinematicBicycleTrackModel {
     static const int NC=10;
     static const int NP=10;
 
+    static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
+
     static constexpr std::array<double, NC> constraint_weights = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     static constexpr std::array<int, NC> constraint_types = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -319,8 +321,6 @@ struct KinematicBicycleTrackModel {
                 kp.B(4,1) = tmp_d38;
                 break;
             }
-            default:
-                break;
         }
     }
 

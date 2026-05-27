@@ -45,7 +45,7 @@ def lookup(records: list[dict]) -> dict[tuple[str, str], dict]:
 
 
 def render_rows(case_names: list[str], by_key: dict[tuple[str, str], dict]) -> list[str]:
-    backend_order = ("minisolver", "acados", "casadi", "clarabel")
+    backend_order = ("minisolver", "acados", "casadi", "clarabel", "altro")
     rows: list[str] = []
     for case in case_names:
         for backend in backend_order:
@@ -83,13 +83,16 @@ def main() -> int:
     stress_cases = [name for name in sorted(candidate_specs) if name == "mpcc_track_following"]
 
     lines = [
-        "# Asset Benchmark Report",
+        "# End-to-End Asset Solver Comparison",
         "",
-        "Cross-solver benchmark results for public-asset-derived case candidates.",
+        "Same-case, closed-loop, end-to-end solver comparison for public-asset-derived candidates.",
+        "",
+        "Each solver row uses the same asset, model family, `dt`, horizon, and requested closed-loop step count for that candidate. "
+        "The timed region is the per-step solver call inside the closed-loop runner; one-time code generation, CMake configure/build, Python import time, and report aggregation are excluded.",
         "",
         "## Current Baseline Cases",
         "",
-        "These are the cases that currently behave like usable benchmark baselines under the present harness.",
+        "These cases currently provide usable same-condition cross-solver comparisons under the present harness.",
         "",
         "| Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|",
@@ -105,19 +108,23 @@ def main() -> int:
         "",
         "## Notes",
         "",
-        "- `MiniSolver` asset benchmarks use MiniSolver Python model generation plus native C++ solve runners.",
-        "- `acados` asset benchmarks use Python export/codegen and compiled C closed-loop runners. Python export time is excluded.",
-        "- `CasADi` asset benchmarks use native C++ runners with `nlpsol('sqpmethod')`; one-time graph construction is excluded from the per-step timing.",
-        "- `time_ms` is external wall-clock time around each compiled solve call for all asset backends in this report.",
+        "- `time_ms` is end-to-end wall-clock time around each solver call inside the closed-loop runner.",
+        "- One-time export, graph construction, CMake configure/build, and report aggregation are excluded from timing.",
+        "- `MiniSolver` uses generated models plus native C++ closed-loop runners.",
+        "- `acados` uses Python export/codegen plus compiled C closed-loop runners; export time is excluded.",
+        "- `CasADi` uses native C++ runners with a pre-built `nlpsol('sqpmethod')` graph.",
+        "- `ALTRO` uses ALTRO's C++ API and is currently limited to the convex robotics reference-tracking cases.",
         "- `max_constraint_violation` is the current closed-loop step violation, not the maximum predicted violation over the full horizon.",
         "- `Clarabel` is included only for convex robotics QP cases. It is not run on the nonconvex driving NMPC cases.",
-        "- The two robotics cases are the cleanest current baselines. MiniSolver and acados are in the same sub-millisecond class there; CasADi is materially slower.",
+        "- `ALTRO` is included only for the robotics reference-tracking cases. It is not run on the nonconvex driving NMPC cases.",
+        "- `data_driven_mpc_loop_tracking` is the cleanest current all-backend robotics baseline, including ALTRO.",
+        "- `data_driven_mpc_lemniscate_tracking` remains a useful robotics benchmark, but ALTRO currently hits `MaxInnerIterations` on the later closed-loop steps. Treat that row as robustness/tuning evidence, not as a pure ALTRO latency comparison.",
         "- `nonlinear_mpcc_porto_following` and `nonlinear_mpcc_fssim_following` are the current driving baselines. Interpret success, tracking, and latency together; none of the three solvers dominates every metric.",
         "- `mpcc_track_following` should not be used for headline conclusions yet. It is still exposing model/setup mismatch rather than a stable solver ranking.",
         "",
         "## Files",
         "",
-        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/casadi/`, `results/raw/clarabel/`",
+        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/casadi/`, `results/raw/clarabel/`, `results/raw/altro/`",
         "- Aggregate CSV: `results/summary.csv`",
         "- Aggregate JSON: `results/summary.json`",
     ]
