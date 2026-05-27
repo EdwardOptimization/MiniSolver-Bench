@@ -38,7 +38,7 @@ For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step 
 - `CasADi` is benchmarked through a pre-built `nlpsol('sqpmethod')` graph with `qrqp` as the QP backend. Model construction is excluded from the per-step timings; the timed region is the repeated SQP solve call in the closed loop.
 - `pendulum_on_cart`, `race_cars`, and `quadrotor_nav` use RTI-style single-iteration closed-loop runs on both sides.
 - `chain_mass` uses full SQP-style solves on both sides, matching the official acados setup.
-- `race_cars` and `quadrotor_nav` contain piecewise track functions. Current MiniSolver Python MiniModel builds do not expose `ppoly`, so the MiniSolver runs use checked-in generated C++ models until a callback-backed path with owned first-derivative smoothing is validated.
+- `race_cars` and `quadrotor_nav` contain piecewise track functions. MiniSolver runs them through generated C++ models with dcol-style model-update callbacks that refresh smooth local spline jets from the official track geometry.
 - `race_cars` and `quadrotor_nav` are official closed-loop cases with solver-dependent early termination. `steps` therefore measure executed closed-loop steps, not a fixed common horizon count.
 
 ## Pairwise Comparison

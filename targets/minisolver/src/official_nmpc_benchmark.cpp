@@ -11,12 +11,17 @@
 #include <random>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "minisolver/solver/solver.h"
 #include "official_case_data.h"
 
 #include "pendulummodel.h"
+
+#if defined(MINISOLVER_CASE_RACE_CARS) || defined(MINISOLVER_CASE_QUADROTOR_NAV)
+#include "official_track_geometry.h"
+#endif
 
 #if defined(MINISOLVER_CASE_RACE_CARS)
 #include "racecarsmodel.h"
@@ -864,12 +869,53 @@ void write_pendulum_outputs(const Args& args, const std::vector<PendulumStep>& r
 }
 
 #if defined(MINISOLVER_CASE_RACE_CARS)
-void set_race_cost_parameters(MiniSolver<RaceCarsModel, 80>& solver, double s0) {
-    constexpr int P_XREF = 0;
-    constexpr int P_UREF = P_XREF + RaceCarsModel::NX;
-    constexpr int P_WX = P_UREF + RaceCarsModel::NU;
-    constexpr int P_WU = P_WX + RaceCarsModel::NX;
+constexpr int RACE_P_XREF = 0;
+constexpr int RACE_P_UREF = RACE_P_XREF + RaceCarsModel::NX;
+constexpr int RACE_P_WX = RACE_P_UREF + RaceCarsModel::NU;
+constexpr int RACE_P_WU = RACE_P_WX + RaceCarsModel::NX;
+constexpr int RACE_P_TRACK_S_LIN = RACE_P_WU + RaceCarsModel::NU;
+constexpr int RACE_P_KAPPA = RACE_P_TRACK_S_LIN + 1;
+constexpr int RACE_P_KAPPA_D1 = RACE_P_KAPPA + 1;
+constexpr int RACE_P_KAPPA_D2 = RACE_P_KAPPA_D1 + 1;
+constexpr int RACE_P_KAPPA_D3 = RACE_P_KAPPA_D2 + 1;
+static_assert(RACE_P_KAPPA_D3 + 1 == RaceCarsModel::NP, "race callback parameter offsets must match generated model");
 
+ApiStatus set_race_track_parameters(MiniSolver<RaceCarsModel, 80>& solver, int stage, double s_lin) {
+    using generated::ppoly_eval_derivative;
+    using generated::race_kappa_breaks;
+    using generated::race_kappa_coeffs;
+
+    const std::array<std::pair<int, double>, 5> values = {{
+        {RACE_P_TRACK_S_LIN, s_lin},
+        {RACE_P_KAPPA, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 0, s_lin)},
+        {RACE_P_KAPPA_D1, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 1, s_lin)},
+        {RACE_P_KAPPA_D2, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 2, s_lin)},
+        {RACE_P_KAPPA_D3, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 3, s_lin)},
+    }};
+    for (const auto& item : values) {
+        const ApiStatus status = solver.set_parameter(stage, item.first, item.second);
+        if (status != ApiStatus::OK) {
+            return status;
+        }
+    }
+    return ApiStatus::OK;
+}
+
+ApiStatus refresh_race_track_parameters(MiniSolver<RaceCarsModel, 80>& solver) {
+    for (int k = 0; k <= solver.get_horizon(); ++k) {
+        const ApiStatus status = set_race_track_parameters(solver, k, solver.get_state(k, 0));
+        if (status != ApiStatus::OK) {
+            return status;
+        }
+    }
+    return ApiStatus::OK;
+}
+
+ApiStatus update_race_track_parameters(MiniSolver<RaceCarsModel, 80>& solver, void* /*user*/) {
+    return refresh_race_track_parameters(solver);
+}
+
+void set_race_cost_parameters(MiniSolver<RaceCarsModel, 80>& solver, double s0) {
     const double unscale = static_cast<double>(race_cars_horizon) / race_cars_tf;
     const std::array<double, RaceCarsModel::NX> stage_wx = {
         unscale * 1e-1,
@@ -899,18 +945,18 @@ void set_race_cost_parameters(MiniSolver<RaceCarsModel, 80>& solver, double s0) 
         const double sref_k = s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(N);
         std::array<double, RaceCarsModel::NX> xref = {sref_k, 0.0, 0.0, 0.0, 0.0, 0.0};
         std::array<double, RaceCarsModel::NU> uref = {0.0, 0.0};
-        set_stage_array_parameters(solver, k, P_XREF, xref);
-        set_stage_array_parameters(solver, k, P_UREF, uref);
-        set_stage_array_parameters(solver, k, P_WX, stage_wx);
-        set_stage_array_parameters(solver, k, P_WU, stage_wu);
+        set_stage_array_parameters(solver, k, RACE_P_XREF, xref);
+        set_stage_array_parameters(solver, k, RACE_P_UREF, uref);
+        set_stage_array_parameters(solver, k, RACE_P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, RACE_P_WU, stage_wu);
     }
 
     std::array<double, RaceCarsModel::NX> xref_terminal = {sref, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::array<double, RaceCarsModel::NU> uref_terminal = {0.0, 0.0};
-    set_stage_array_parameters(solver, N, P_XREF, xref_terminal);
-    set_stage_array_parameters(solver, N, P_UREF, uref_terminal);
-    set_stage_array_parameters(solver, N, P_WX, terminal_wx);
-    set_stage_array_parameters(solver, N, P_WU, terminal_wu);
+    set_stage_array_parameters(solver, N, RACE_P_XREF, xref_terminal);
+    set_stage_array_parameters(solver, N, RACE_P_UREF, uref_terminal);
+    set_stage_array_parameters(solver, N, RACE_P_WX, terminal_wx);
+    set_stage_array_parameters(solver, N, RACE_P_WU, terminal_wu);
 }
 
 void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::array<double, 6>& x0) {
@@ -920,7 +966,9 @@ void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::ar
         solver.set_control_guess(k, 0, 0.0);
         solver.set_control_guess(k, 1, 0.0);
     }
+    refresh_race_track_parameters(solver);
     solver.rollout_dynamics();
+    refresh_race_track_parameters(solver);
 }
 
 std::vector<RaceStep> run_race_case(const Args& args) {
@@ -933,6 +981,7 @@ std::vector<RaceStep> run_race_case(const Args& args) {
     MiniSolver<RaceCarsModel, 80> warmup_solver(race_cars_horizon, Backend::CPU_SERIAL, config);
     warmup_solver.set_dt(race_cars_tf / static_cast<double>(race_cars_horizon));
     initialize_race_solver(warmup_solver, race_cars_x0);
+    warmup_solver.set_model_update_callback(update_race_track_parameters);
     auto warm_state = race_cars_x0;
     for (int i = 0; i < args.warmup_runs; ++i) {
         set_race_cost_parameters(warmup_solver, warm_state[0]);
@@ -946,6 +995,7 @@ std::vector<RaceStep> run_race_case(const Args& args) {
     MiniSolver<RaceCarsModel, 80> solver(race_cars_horizon, Backend::CPU_SERIAL, config);
     solver.set_dt(race_cars_tf / static_cast<double>(race_cars_horizon));
     initialize_race_solver(solver, race_cars_x0);
+    solver.set_model_update_callback(update_race_track_parameters);
 
     std::vector<RaceStep> results;
     results.reserve(static_cast<size_t>(args.steps));
@@ -1056,12 +1106,83 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
 #endif
 
 #if defined(MINISOLVER_CASE_QUADROTOR_NAV)
-void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double s0) {
-    constexpr int P_XREF = 0;
-    constexpr int P_UREF = P_XREF + QuadrotorNavModel::NX;
-    constexpr int P_WX = P_UREF + QuadrotorNavModel::NU;
-    constexpr int P_WU = P_WX + QuadrotorNavModel::NX;
+constexpr int QUAD_P_XREF = 0;
+constexpr int QUAD_P_UREF = QUAD_P_XREF + QuadrotorNavModel::NX;
+constexpr int QUAD_P_WX = QUAD_P_UREF + QuadrotorNavModel::NU;
+constexpr int QUAD_P_WU = QUAD_P_WX + QuadrotorNavModel::NX;
+constexpr int QUAD_P_TRACK_S_LIN = QUAD_P_WU + QuadrotorNavModel::NU;
+constexpr int QUAD_P_TRACK_X_D1 = QUAD_P_TRACK_S_LIN + 1;
+constexpr int QUAD_P_TRACK_Y_D1 = QUAD_P_TRACK_X_D1 + 5;
+constexpr int QUAD_P_TRACK_Z_D1 = QUAD_P_TRACK_Y_D1 + 5;
+static_assert(QUAD_P_TRACK_Z_D1 + 5 == QuadrotorNavModel::NP, "quad callback parameter offsets must match generated model");
 
+template <std::size_t NBreaks, std::size_t NCoeffs, typename Setter>
+ApiStatus set_quad_track_axis_parameters(
+    Setter&& setter,
+    int base_idx,
+    double s_lin,
+    const std::array<double, NBreaks>& breaks,
+    const std::array<double, NCoeffs>& coeffs) {
+    for (int order = 1; order <= 5; ++order) {
+        const double value = generated::ppoly_eval_derivative(breaks, coeffs, 5, order, s_lin);
+        const ApiStatus status = setter(base_idx + order - 1, value);
+        if (status != ApiStatus::OK) {
+            return status;
+        }
+    }
+    return ApiStatus::OK;
+}
+
+ApiStatus set_quad_track_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, int stage, double s_lin) {
+    ApiStatus status = solver.set_parameter(stage, QUAD_P_TRACK_S_LIN, s_lin);
+    if (status != ApiStatus::OK) {
+        return status;
+    }
+
+    auto setter = [&](int idx, double value) { return solver.set_parameter(stage, idx, value); };
+    status = set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_X_D1, s_lin, generated::quad_track_x_breaks, generated::quad_track_x_coeffs);
+    if (status != ApiStatus::OK) {
+        return status;
+    }
+    status = set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_Y_D1, s_lin, generated::quad_track_y_breaks, generated::quad_track_y_coeffs);
+    if (status != ApiStatus::OK) {
+        return status;
+    }
+    return set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_Z_D1, s_lin, generated::quad_track_z_breaks, generated::quad_track_z_coeffs);
+}
+
+void fill_quad_track_parameter_vector(MSVec<double, QuadrotorNavModel::NP>& p, double s_lin) {
+    p(QUAD_P_TRACK_S_LIN) = s_lin;
+    auto setter = [&](int idx, double value) {
+        p(idx) = value;
+        return ApiStatus::OK;
+    };
+    set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_X_D1, s_lin, generated::quad_track_x_breaks, generated::quad_track_x_coeffs);
+    set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_Y_D1, s_lin, generated::quad_track_y_breaks, generated::quad_track_y_coeffs);
+    set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_Z_D1, s_lin, generated::quad_track_z_breaks, generated::quad_track_z_coeffs);
+}
+
+ApiStatus refresh_quad_track_parameters(MiniSolver<QuadrotorNavModel, 80>& solver) {
+    for (int k = 0; k <= solver.get_horizon(); ++k) {
+        const ApiStatus status = set_quad_track_parameters(solver, k, solver.get_state(k, 0));
+        if (status != ApiStatus::OK) {
+            return status;
+        }
+    }
+    return ApiStatus::OK;
+}
+
+ApiStatus update_quad_track_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, void* /*user*/) {
+    return refresh_quad_track_parameters(solver);
+}
+
+void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double s0) {
     std::array<double, QuadrotorNavModel::NX> stage_wx = {
         1.0, 1e-1, 1e-1,
         1e-5, 1e-5, 1e-5, 1e-5,
@@ -1095,10 +1216,10 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
             quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov,
         };
         std::array<double, QuadrotorNavModel::NU> uref = {0.0, 0.0, 0.0, 0.0};
-        set_stage_array_parameters(solver, k, P_XREF, xref);
-        set_stage_array_parameters(solver, k, P_UREF, uref);
-        set_stage_array_parameters(solver, k, P_WX, stage_wx);
-        set_stage_array_parameters(solver, k, P_WU, stage_wu);
+        set_stage_array_parameters(solver, k, QUAD_P_XREF, xref);
+        set_stage_array_parameters(solver, k, QUAD_P_UREF, uref);
+        set_stage_array_parameters(solver, k, QUAD_P_WX, stage_wx);
+        set_stage_array_parameters(solver, k, QUAD_P_WU, stage_wu);
     }
 
     const double terminal_sref = sref;
@@ -1111,10 +1232,10 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
         quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov, quadrotor_nav_u_hov,
     };
     std::array<double, QuadrotorNavModel::NU> uref_terminal = {0.0, 0.0, 0.0, 0.0};
-    set_stage_array_parameters(solver, N, P_XREF, xref_terminal);
-    set_stage_array_parameters(solver, N, P_UREF, uref_terminal);
-    set_stage_array_parameters(solver, N, P_WX, terminal_wx);
-    set_stage_array_parameters(solver, N, P_WU, terminal_wu);
+    set_stage_array_parameters(solver, N, QUAD_P_XREF, xref_terminal);
+    set_stage_array_parameters(solver, N, QUAD_P_UREF, uref_terminal);
+    set_stage_array_parameters(solver, N, QUAD_P_WX, terminal_wx);
+    set_stage_array_parameters(solver, N, QUAD_P_WU, terminal_wu);
 }
 
 void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std::array<double, 20>& x0) {
@@ -1125,7 +1246,9 @@ void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std
             solver.set_control_guess(k, j, 0.0);
         }
     }
+    refresh_quad_track_parameters(solver);
     solver.rollout_dynamics();
+    refresh_quad_track_parameters(solver);
 }
 
 std::vector<QuadStep> run_quad_case(const Args& args) {
@@ -1138,12 +1261,14 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
     MiniSolver<QuadrotorNavModel, 80> warmup_solver(quadrotor_nav_horizon, Backend::CPU_SERIAL, config);
     warmup_solver.set_dt(quadrotor_nav_tf / static_cast<double>(quadrotor_nav_horizon));
     initialize_quad_solver(warmup_solver, quadrotor_nav_init_zeta);
+    warmup_solver.set_model_update_callback(update_quad_track_parameters);
     auto warm_state = quadrotor_nav_init_zeta;
     for (int i = 0; i < args.warmup_runs; ++i) {
         set_quad_cost_parameters(warmup_solver, warm_state[0]);
         warmup_solver.solve();
         MSVec<double, QuadrotorNavModel::NP> p;
         p.setZero();
+        fill_quad_track_parameter_vector(p, warm_state[0]);
         const auto next = QuadrotorNavModel::integrate(
             to_msvec<QuadrotorNavModel::NX>(warm_state),
             to_msvec<QuadrotorNavModel::NU>(warmup_solver.get_control(0)),
@@ -1159,6 +1284,7 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
     MiniSolver<QuadrotorNavModel, 80> solver(quadrotor_nav_horizon, Backend::CPU_SERIAL, config);
     solver.set_dt(quadrotor_nav_tf / static_cast<double>(quadrotor_nav_horizon));
     initialize_quad_solver(solver, quadrotor_nav_init_zeta);
+    solver.set_model_update_callback(update_quad_track_parameters);
 
     std::vector<QuadStep> results;
     results.reserve(static_cast<size_t>(args.steps));
@@ -1184,6 +1310,7 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
 
         MSVec<double, QuadrotorNavModel::NP> p;
         p.setZero();
+        fill_quad_track_parameter_vector(p, current_state[0]);
         const auto next = QuadrotorNavModel::integrate(
             to_msvec<QuadrotorNavModel::NX>(current_state),
             to_msvec<QuadrotorNavModel::NU>(solver.get_control(0)),

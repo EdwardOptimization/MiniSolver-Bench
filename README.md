@@ -24,9 +24,9 @@ Fairness rules in this repository:
 - `CasADi` timings measure repeated solve calls on a pre-built CasADi SQP graph; one-time graph construction is excluded
 - case-specific termination follows the official closed-loop logic for that case
 - official `race_cars` and `quadrotor_nav` require piecewise track functions.
-  Current MiniSolver Python MiniModel builds do not expose that `ppoly` modeling
-  API, so those MiniSolver runners use checked-in generated C++ models until a
-  callback-backed, smoothed-gradient path is validated.
+  MiniSolver handles them through dcol-style model-update callbacks: the runner
+  samples the official spline/ppoly geometry and refreshes smooth local
+  polynomial jets as stage parameters before each solve iteration.
 
 ## Layout
 
@@ -65,11 +65,10 @@ Official compatibility/reference cases:
 - `quadrotor_nav`
 - `chain_mass`
 
-`race_cars` and `quadrotor_nav` are kept as official acados compatibility cases,
-not as the default MiniSolver Python-modeling headline cases, because their
-track terms are piecewise functions. They should move back into headline scope
-only after the callback or native piecewise path owns first-derivative smoothing
-and has matched cross-solver evidence.
+`race_cars` and `quadrotor_nav` are kept as official acados compatibility cases.
+Their MiniSolver models use generated C++ plus callback-refreshed local spline
+jets, so the benchmark can compare the same official track geometry without
+requiring Python MiniModel `ppoly` support.
 
 ## Current backends
 

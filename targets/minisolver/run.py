@@ -175,47 +175,23 @@ def generate_native_model(case_name: str, minisolver_source_dir: Path, acados_re
         "race_cars": script_dir / "acados_race_cars" / "generate_model.py",
         "quadrotor_nav": script_dir / "acados_quadrotor_nav" / "generate_model.py",
     }
-    checked_in_ppoly_headers = {
-        "race_cars": ROOT / "targets" / "minisolver" / "generated" / "racecarsmodel.h",
-        "quadrotor_nav": ROOT / "targets" / "minisolver" / "generated" / "quadrotornavmodel.h",
-    }
     if case_name not in script_map:
         return
-    if case_name in checked_in_ppoly_headers and not minisolver_supports_ppoly(minisolver_source_dir):
-        header = checked_in_ppoly_headers[case_name]
-        if not header.exists():
-            raise FileNotFoundError(
-                f"{case_name} requires a piecewise/callback-backed generated model because current "
-                f"MiniModel does not expose ppoly(): {header}"
-            )
-        print(
-            f"+ using checked-in generated model {header} "
-            f"(MiniModel ppoly unavailable; callback smoothing must be supplied by the model owner)"
-        )
-        return
-    script_path = script_map[case_name]
+
     env = os.environ.copy()
     env["MINISOLVER_SOURCE_DIR"] = str(minisolver_source_dir.resolve())
     env["ACADOS_REPO"] = str(acados_repo.resolve())
+
+    if case_name in {"race_cars", "quadrotor_nav"}:
+        geometry_script = script_dir / "generate_official_track_geometry.py"
+        geometry_cmd = [sys.executable, str(geometry_script)]
+        print("+", " ".join(str(part) for part in geometry_cmd))
+        subprocess.run(geometry_cmd, cwd=ROOT, env=env, check=True)
+
+    script_path = script_map[case_name]
     cmd = [sys.executable, str(script_path)]
     print("+", " ".join(str(part) for part in cmd))
     subprocess.run(cmd, cwd=ROOT, env=env, check=True)
-
-
-def minisolver_supports_ppoly(minisolver_source_dir: Path) -> bool:
-    minisolver_python = minisolver_source_dir.resolve() / "python"
-    if not minisolver_python.exists():
-        return False
-    old_path = list(sys.path)
-    try:
-        sys.path.insert(0, str(minisolver_python))
-        from minisolver.MiniModel import OptimalControlModel  # type: ignore
-
-        return hasattr(OptimalControlModel, "ppoly")
-    except Exception:
-        return False
-    finally:
-        sys.path = old_path
 
 
 def generate_native_models_for_build(case_name: str, minisolver_source_dir: Path, acados_repo: Path) -> None:
@@ -332,6 +308,12 @@ def ensure_binary(
         f"-DMINISOLVER_SOURCE_DIR={minisolver_source_dir}",
         f"-DMINISOLVER_CASE={case_name}",
         f"-DACADOS_OUTPUT_ROOT={ROOT / 'out' / 'acados'}",
+        "-DALTRO_SOURCE_DIR=",
+        "-DMINISOLVER_BUILD_TESTS=OFF",
+        "-DMINISOLVER_BUILD_EXAMPLES=OFF",
+        "-DMINISOLVER_BUILD_TOOLS=OFF",
+        "-DMINISOLVER_FETCH_DEPS=OFF",
+        "-DCMAKE_BUILD_TYPE=Release",
     ]
     build_cmd = [
         "cmake",

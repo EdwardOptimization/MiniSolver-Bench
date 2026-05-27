@@ -13,7 +13,12 @@ struct RaceCarsModel {
     static const int NX=6;
     static const int NU=2;
     static const int NC=14;
-    static const int NP=16;
+    static const int NP=21;
+    static const int P_CALLBACK_TRACK_S_LIN=16;
+    static const int P_CALLBACK_KAPPA=17;
+    static const int P_CALLBACK_KAPPA_D1=18;
+    static const int P_CALLBACK_KAPPA_D2=19;
+    static const int P_CALLBACK_KAPPA_D3=20;
 
     static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
@@ -1145,6 +1150,23 @@ struct RaceCarsModel {
         return ppoly_eval<T, 594, 0>(s, ppoly_race_kappa_d3_breaks, ppoly_race_kappa_d3_coeffs);
     }
 
+    template <typename T>
+    static inline T callback_race_kappa(const MSVec<T, NP>& p, const T& s) {
+        const T ds = s - p(P_CALLBACK_TRACK_S_LIN);
+        return p(P_CALLBACK_KAPPA)
+            + p(P_CALLBACK_KAPPA_D1) * ds
+            + T(0.5) * p(P_CALLBACK_KAPPA_D2) * ds * ds
+            + T(1.0 / 6.0) * p(P_CALLBACK_KAPPA_D3) * ds * ds * ds;
+    }
+
+    template <typename T>
+    static inline T callback_race_kappa_d1(const MSVec<T, NP>& p, const T& s) {
+        const T ds = s - p(P_CALLBACK_TRACK_S_LIN);
+        return p(P_CALLBACK_KAPPA_D1)
+            + p(P_CALLBACK_KAPPA_D2) * ds
+            + T(0.5) * p(P_CALLBACK_KAPPA_D3) * ds * ds;
+    }
+
 
     // --- Continuous Dynamics + Jacobians (Generated) ---
 template<typename T>
@@ -1164,7 +1186,8 @@ template<typename T>
         T delta = x_in(5);
         T derD = u_in(0);
         T derDelta = u_in(1);
-        (void)p_in;
+        const auto ppoly_race_kappa = [&](const T& value) { return callback_race_kappa(p_in, value); };
+        const auto ppoly_race_kappa_d1 = [&](const T& value) { return callback_race_kappa_d1(p_in, value); };
 
         // CSE Intermediate Variables
         T tmp_f0 = 0.5*delta;
@@ -1315,6 +1338,11 @@ ppoly_race_kappa_d1(s);
         "wx5",
         "wu0",
         "wu1",
+        "track_s_lin",
+        "race_kappa",
+        "race_kappa_d1",
+        "race_kappa_d2",
+        "race_kappa_d3",
     };
 
 
@@ -1333,7 +1361,7 @@ ppoly_race_kappa_d1(s);
         T delta = x_in(5);
         T derD = u_in(0);
         T derDelta = u_in(1);
-        (void)p_in;
+        const auto ppoly_race_kappa = [&](const T& value) { return callback_race_kappa(p_in, value); };
 
         MSVec<T, NX> xdot;
         xdot(0) = /* Not supported in C: */

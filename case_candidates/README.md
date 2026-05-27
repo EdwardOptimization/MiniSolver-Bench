@@ -22,6 +22,6 @@ Modeling notes:
 - `kinematic_bicycle_track_following` candidates use runner-side track sampling
   and stage parameters. Treat that as the callback-like/parametric path: the
   runner/model contract owns smooth references and first-derivative behavior.
-- Official `race_cars` and `quadrotor_nav` are not duplicated here because their
-  MiniSolver models depend on piecewise track functions and currently use
-  checked-in generated C++ headers when Python MiniModel lacks `ppoly`.
+- Official `race_cars` and `quadrotor_nav` are not duplicated here because the
+  official-case harness owns them. Their MiniSolver models use generated C++
+  plus callback-refreshed local spline jets instead of Python MiniModel `ppoly`.
