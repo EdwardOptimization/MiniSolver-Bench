@@ -102,7 +102,7 @@ def render_rows(case_names: list[str], specs: dict[str, dict], by_key: dict[tupl
             status = comparison_status(spec, backend, record)
             if record is None:
                 rows.append(
-                    "| `{case}` | `{backend}` | {status} | {requested} | - | - | - | - | - | - | - |".format(
+                    "| `{case}` | `{backend}` | {status} | {requested} | - | - | - | - | - | - | - | - | - |".format(
                         case=case,
                         backend=backend,
                         status=status,
@@ -111,13 +111,15 @@ def render_rows(case_names: list[str], specs: dict[str, dict], by_key: dict[tupl
                 )
                 continue
             rows.append(
-                "| `{case}` | `{backend}` | {status} | {requested} | {steps} | {success} | {median} | {p95} | {maxv} | {avg_track} | {max_viol} |".format(
+                "| `{case}` | `{backend}` | {status} | {requested} | {steps} | {success} | {avg_iter} | {avg_sqp_iter} | {median} | {p95} | {maxv} | {avg_track} | {max_viol} |".format(
                     case=case,
                     backend=backend,
                     status=status,
                     requested=spec["closed_loop_steps"],
                     steps=record["steps"],
                     success=fmt(record.get("success_rate"), 3),
+                    avg_iter=fmt(record.get("avg_iterations")),
+                    avg_sqp_iter=fmt(record.get("avg_sqp_iterations")),
                     median=fmt(record.get("median_ms")),
                     p95=fmt(record.get("p95_ms")),
                     maxv=fmt(record.get("max_ms")),
@@ -167,8 +169,8 @@ def main() -> int:
         "",
         "These cases currently provide usable same-condition cross-solver comparisons under the present harness.",
         "",
-        "| Case | Backend | Contract | Requested Steps | Observed Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Case | Backend | Contract | Requested Steps | Observed Steps | Success | Avg Iterations | Avg SQP Iterations | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         *render_rows(stable_cases, candidate_specs, by_key),
         "",
         "## Stress Case",
@@ -176,13 +178,14 @@ def main() -> int:
         "`mpcc_track_following` is shown separately as the retained harder driving track. "
         "Use it for ranking only when the compared rows pass the same success, tracking, and violation gate.",
         "",
-        "| Case | Backend | Contract | Requested Steps | Observed Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Case | Backend | Contract | Requested Steps | Observed Steps | Success | Avg Iterations | Avg SQP Iterations | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         *render_rows(stress_cases, candidate_specs, by_key),
         "",
         "## Notes",
         "",
         "- `time_ms` is end-to-end wall-clock time around each solver call inside the closed-loop runner.",
+        "- `Avg Iterations` is the comparable inner iteration count. For acados asset runners it is the summed HPIPM QP/IPM iterations per closed-loop step; `Avg SQP Iterations` is reported separately.",
         "- One-time export, graph construction, CMake configure/build, and report aggregation are excluded from timing.",
         "- `comparable` means that backend supports the candidate and produced the candidate's requested closed-loop step count. It does not by itself certify an equivalent full-solve optimality budget.",
         "- `missing` means the backend should be comparable for that candidate but no raw result is present in `results/raw/`.",

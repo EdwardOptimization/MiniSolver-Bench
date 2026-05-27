@@ -64,6 +64,48 @@ static double monotonic_time_ms(void)
     return (double) ts.tv_sec * 1000.0 + (double) ts.tv_nsec / 1.0e6;
 }
 
+static int get_qp_iterations(ocp_nlp_solver *nlp_solver)
+{
+    int nlp_iter = 0;
+    int stat_m = 0;
+    int stat_n = 0;
+    ocp_nlp_get(nlp_solver, "nlp_iter", &nlp_iter);
+    ocp_nlp_get(nlp_solver, "stat_m", &stat_m);
+    ocp_nlp_get(nlp_solver, "stat_n", &stat_n);
+
+    const int nrow = nlp_iter + 1 < stat_m ? nlp_iter + 1 : stat_m;
+    if (nrow <= 0)
+    {
+        int qp_iter = 0;
+        ocp_nlp_get(nlp_solver, "qp_iter", &qp_iter);
+        return qp_iter;
+    }
+
+    double *stat = (double *) calloc((size_t) (stat_n + 1) * (size_t) nrow, sizeof(double));
+    if (!stat)
+    {
+        int qp_iter = 0;
+        ocp_nlp_get(nlp_solver, "qp_iter", &qp_iter);
+        return qp_iter;
+    }
+    ocp_nlp_get(nlp_solver, "statistics", stat);
+
+    // acados' public statistics matrix prepends an iteration-index column.
+    const int qp_iter_col = stat_n == 2 ? 2 : 6;
+    const int first_qp_row = stat_n == 2 ? 0 : 1;
+    int total = 0;
+    if (qp_iter_col <= stat_n)
+    {
+        for (int i = first_qp_row; i < nrow; ++i)
+        {
+            const double value = stat[i + qp_iter_col * nrow];
+            if (isfinite(value) && value > 0.0) total += (int) llround(value);
+        }
+    }
+    free(stat);
+    return total;
+}
+
 static int split_csv(char *line, char **parts, int max_parts)
 {
     int count = 0;
@@ -267,7 +309,7 @@ int main(int argc, char **argv)
         ref_free(&ref);
         return 1;
     }
-    fprintf(csv, "step,status,time_ms,iterations,x,y,z,vx,vy,vz,tracking_error,max_constraint_violation\n");
+    fprintf(csv, "step,status,time_ms,qp_iterations,sqp_iterations,x,y,z,vx,vy,vz,tracking_error,max_constraint_violation\n");
 
     double *times = (double *) calloc((size_t) steps, sizeof(double));
     int success = 0;
@@ -290,6 +332,7 @@ int main(int argc, char **argv)
         const double elapsed_ms = monotonic_time_ms() - start_ms;
         int sqp_iter = 0;
         ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
+        const int qp_iter = get_qp_iterations(nlp_solver);
 
         double u0[NU];
         ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
@@ -305,8 +348,8 @@ int main(int argc, char **argv)
         };
         for (int i = 0; i < 6; ++i) if (cands[i] > max_viol) max_viol = cands[i];
 
-        fprintf(csv, "%d,%d,%.9f,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
-                step, status, elapsed_ms, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4], xcurrent[5],
+        fprintf(csv, "%d,%d,%.9f,%d,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
+                step, status, elapsed_ms, qp_iter, sqp_iter, xcurrent[0], xcurrent[1], xcurrent[2], xcurrent[3], xcurrent[4], xcurrent[5],
                 tracking_error, max_viol);
         if (status == 0)
         {

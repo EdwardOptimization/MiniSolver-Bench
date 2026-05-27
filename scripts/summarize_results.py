@@ -99,10 +99,21 @@ def summarize_file(path: Path) -> dict[str, object] | None:
         iterations = [value for row in success_rows if (value := parse_float(row, "iterations")) is not None]
         if iterations:
             record["avg_iterations"] = sum(iterations) / len(iterations)
+    if "qp_iterations" in rows[0]:
+        qp_iterations = [value for row in success_rows if (value := parse_float(row, "qp_iterations")) is not None]
+        if qp_iterations:
+            record["avg_qp_iterations"] = sum(qp_iterations) / len(qp_iterations)
+            record["avg_iterations"] = record["avg_qp_iterations"]
+    if "sqp_iterations" in rows[0]:
+        sqp_iters = [value for row in success_rows if (value := parse_float(row, "sqp_iterations")) is not None]
+        if sqp_iters:
+            record["avg_sqp_iterations"] = sum(sqp_iters) / len(sqp_iters)
     if "sqp_iter" in rows[0]:
         sqp_iters = [value for row in success_rows if (value := parse_float(row, "sqp_iter")) is not None]
         if sqp_iters:
-            record["avg_iterations"] = sum(sqp_iters) / len(sqp_iters)
+            record["avg_sqp_iterations"] = sum(sqp_iters) / len(sqp_iters)
+            if "avg_iterations" not in record:
+                record["avg_iterations"] = record["avg_sqp_iterations"]
 
     if "max_constraint_violation" in rows[0]:
         violations = [value for row in rows if (value := parse_float(row, "max_constraint_violation")) is not None]
