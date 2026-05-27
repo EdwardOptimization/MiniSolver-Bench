@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_JSON = ROOT / "results" / "summary.json"
 CASE_CANDIDATE_DIR = ROOT / "case_candidates"
 REPORT_MD = ROOT / "results" / "asset_benchmark_report.md"
+BACKEND_ORDER = ("minisolver", "acados", "casadi", "clarabel", "altro")
 
 
 def load_records() -> list[dict]:
@@ -37,6 +38,15 @@ def fmt(value: object | None, digits: int = 6) -> str:
     return f"{float(value):.{digits}g}"
 
 
+def supported_backends(spec: dict) -> tuple[str, ...]:
+    model_family = spec["model_family"]
+    if model_family == "double_integrator_3d_tracking":
+        return BACKEND_ORDER
+    if model_family == "kinematic_bicycle_track_following":
+        return ("minisolver", "acados", "casadi")
+    raise ValueError(f"unsupported model_family in candidate spec: {model_family}")
+
+
 def lookup(records: list[dict]) -> dict[tuple[str, str], dict]:
     out: dict[tuple[str, str], dict] = {}
     for record in records:
@@ -44,19 +54,68 @@ def lookup(records: list[dict]) -> dict[tuple[str, str], dict]:
     return out
 
 
-def render_rows(case_names: list[str], by_key: dict[tuple[str, str], dict]) -> list[str]:
-    backend_order = ("minisolver", "acados", "casadi", "clarabel", "altro")
+def comparison_status(spec: dict, backend: str, record: dict | None) -> str:
+    if backend not in supported_backends(spec):
+        return "unsupported"
+    if record is None:
+        return "missing"
+
+    expected_steps = int(spec["closed_loop_steps"])
+    observed_steps = int(record["steps"])
+    if observed_steps != expected_steps:
+        return f"step-mismatch {observed_steps}/{expected_steps}"
+    return "comparable"
+
+
+def contract_summary(case_names: list[str], specs: dict[str, dict], by_key: dict[tuple[str, str], dict]) -> list[str]:
     rows: list[str] = []
     for case in case_names:
-        for backend in backend_order:
+        spec = specs[case]
+        comparable = supported_backends(spec)
+        problems: list[str] = []
+        for backend in comparable:
+            status = comparison_status(spec, backend, by_key.get((backend, case)))
+            if status != "comparable":
+                problems.append(f"{backend}:{status}")
+        contract = "complete" if not problems else "; ".join(problems)
+        rows.append(
+            "| `{case}` | `{domain}` | `{model}` | {dt} | {horizon} | {steps} | {backends} | {contract} |".format(
+                case=case,
+                domain=spec["domain"],
+                model=spec["model_family"],
+                dt=fmt(spec["dt"]),
+                horizon=spec["horizon"],
+                steps=spec["closed_loop_steps"],
+                backends=", ".join(f"`{backend}`" for backend in comparable),
+                contract=contract,
+            )
+        )
+    return rows
+
+
+def render_rows(case_names: list[str], specs: dict[str, dict], by_key: dict[tuple[str, str], dict]) -> list[str]:
+    rows: list[str] = []
+    for case in case_names:
+        spec = specs[case]
+        for backend in BACKEND_ORDER:
             record = by_key.get((backend, case))
+            status = comparison_status(spec, backend, record)
             if record is None:
-                rows.append(f"| `{case}` | `{backend}` | - | - | - | - | - | - | - |")
+                rows.append(
+                    "| `{case}` | `{backend}` | {status} | {requested} | - | - | - | - | - | - | - |".format(
+                        case=case,
+                        backend=backend,
+                        status=status,
+                        requested=spec["closed_loop_steps"],
+                    )
+                )
                 continue
             rows.append(
-                "| `{case}` | `{backend}` | {steps} | {success} | {median} | {p95} | {maxv} | {avg_track} | {max_viol} |".format(
+                "| `{case}` | `{backend}` | {status} | {requested} | {steps} | {success} | {median} | {p95} | {maxv} | {avg_track} | {max_viol} |".format(
                     case=case,
                     backend=backend,
+                    status=status,
+                    requested=spec["closed_loop_steps"],
                     steps=record["steps"],
                     success=fmt(record.get("success_rate"), 3),
                     median=fmt(record.get("median_ms")),
@@ -90,26 +149,35 @@ def main() -> int:
         "Each solver row uses the same asset, model family, `dt`, horizon, and requested closed-loop step count for that candidate. "
         "The timed region is the per-step solver call inside the closed-loop runner; one-time code generation, CMake configure/build, Python import time, and report aggregation are excluded.",
         "",
+        "## Fairness Contract",
+        "",
+        "| Case | Domain | Model Family | dt | Horizon | Requested Steps | Comparable Backends | Contract Status |",
+        "|---|---|---|---:|---:|---:|---|---|",
+        *contract_summary(stable_cases + stress_cases, candidate_specs, by_key),
+        "",
         "## Current Baseline Cases",
         "",
         "These cases currently provide usable same-condition cross-solver comparisons under the present harness.",
         "",
-        "| Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
-        *render_rows(stable_cases, by_key),
+        "| Case | Backend | Contract | Requested Steps | Observed Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        *render_rows(stable_cases, candidate_specs, by_key),
         "",
         "## Stress Case",
         "",
         "`mpcc_track_following` is kept separate because it is still a stress case, not a stable baseline.",
         "",
-        "| Case | Backend | Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
-        *render_rows(stress_cases, by_key),
+        "| Case | Backend | Contract | Requested Steps | Observed Steps | Success | Median ms | P95 ms | Max ms | Avg Tracking Error | Max Constraint Violation |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        *render_rows(stress_cases, candidate_specs, by_key),
         "",
         "## Notes",
         "",
         "- `time_ms` is end-to-end wall-clock time around each solver call inside the closed-loop runner.",
         "- One-time export, graph construction, CMake configure/build, and report aggregation are excluded from timing.",
+        "- `comparable` means that backend supports the candidate and produced the candidate's requested closed-loop step count.",
+        "- `missing` means the backend should be comparable for that candidate but no raw result is present in `results/raw/`.",
+        "- `unsupported` means the backend does not implement that model family in this harness and is excluded from ranking for that case.",
         "- `MiniSolver` uses generated models plus native C++ closed-loop runners.",
         "- `acados` uses Python export/codegen plus compiled C closed-loop runners; export time is excluded.",
         "- `CasADi` uses native C++ runners with a pre-built `nlpsol('sqpmethod')` graph.",
