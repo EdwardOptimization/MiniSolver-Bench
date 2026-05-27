@@ -439,7 +439,7 @@ static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
 int main(int argc, char **argv)
 {
     const char *asset_path = NULL;
-    const char *output_path = "results/raw/acados/@CANDIDATE_NAME@.csv";
+    const char *output_path = "results/raw/@ACADOS_BACKEND@/@CANDIDATE_NAME@.csv";
     int steps = STEPS_DEFAULT;
     double target_speed = @TARGET_SPEED@;
     for (int i = 1; i < argc; ++i)
@@ -525,6 +525,7 @@ int main(int argc, char **argv)
         int status = 0;
         int sqp_iter = 0;
 
+#if @USE_RTI@
         int rti_phase = 1;
         ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "rti_phase", &rti_phase);
         const double start_ms = monotonic_time_ms();
@@ -541,6 +542,11 @@ int main(int argc, char **argv)
         const double prep_ms = mid_ms - start_ms;
         const double feedback_ms = end_ms - mid_ms;
         const double elapsed_ms = prep_ms + feedback_ms;
+#else
+        const double start_ms = monotonic_time_ms();
+        status = @MODEL_NAME@_acados_solve(solver_capsule);
+        const double elapsed_ms = monotonic_time_ms() - start_ms;
+#endif
         ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
         double u0[NU];

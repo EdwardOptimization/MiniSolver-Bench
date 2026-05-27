@@ -43,6 +43,8 @@ def is_success_row(row: dict[str, str], backend: str) -> bool:
         # In acados, hitting MAXITER still returns a usable iterate. For closed-loop MPC
         # benchmarks we count both SUCCESS (0) and MAXITER (2) as successful steps.
         return status in {"0", "2"}
+    if backend == "acados_sqp":
+        return status == "0"
     if backend == "altro":
         return status == "Solved"
     return status == "0"

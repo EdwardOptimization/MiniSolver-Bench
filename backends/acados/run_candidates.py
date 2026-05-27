@@ -19,6 +19,7 @@ else:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run all acados asset-derived benchmark candidates.")
     parser.add_argument("--acados-repo", type=Path, default=None)
+    parser.add_argument("--profile", choices=["rti", "sqp"], default="rti")
     return parser.parse_args()
 
 
@@ -26,7 +27,7 @@ def main() -> int:
     args = parse_args()
     script = Path(__file__).resolve().parent / "run_candidate.py"
     for name in list_candidate_names():
-        cmd = [sys.executable, str(script), "--candidate", name]
+        cmd = [sys.executable, str(script), "--candidate", name, "--profile", args.profile]
         if args.acados_repo is not None:
             cmd += ["--acados-repo", str(args.acados_repo)]
         print("+", " ".join(str(part) for part in cmd))

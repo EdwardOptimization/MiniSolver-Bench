@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_JSON = ROOT / "results" / "summary.json"
 CASE_CANDIDATE_DIR = ROOT / "case_candidates"
 REPORT_MD = ROOT / "results" / "asset_benchmark_report.md"
-BACKEND_ORDER = ("minisolver", "acados", "casadi", "clarabel", "altro")
+BACKEND_ORDER = ("minisolver", "acados", "acados_sqp", "casadi", "clarabel", "altro")
 
 
 def load_records() -> list[dict]:
@@ -43,7 +43,7 @@ def supported_backends(spec: dict) -> tuple[str, ...]:
     if model_family == "double_integrator_3d_tracking":
         return BACKEND_ORDER
     if model_family == "kinematic_bicycle_track_following":
-        return ("minisolver", "acados", "casadi")
+        return ("minisolver", "acados", "acados_sqp", "casadi")
     raise ValueError(f"unsupported model_family in candidate spec: {model_family}")
 
 
@@ -187,7 +187,8 @@ def main() -> int:
         "- `missing` means the backend should be comparable for that candidate but no raw result is present in `results/raw/`.",
         "- `unsupported` means the backend does not implement that model family in this harness and is excluded from ranking for that case.",
         "- `MiniSolver` uses generated models plus native C++ closed-loop runners with `tol_con=tol_dual=1e-4` for asset candidates.",
-        "- `acados` uses Python export/codegen plus compiled C closed-loop runners; export time is excluded. Current asset rows use `SQP_RTI`, so treat them as RTI closed-loop baselines rather than strict `1e-4` full-solve solver-core rankings.",
+        "- `acados` uses Python export/codegen plus compiled C closed-loop runners; export time is excluded. `acados` rows use `SQP_RTI`, so treat them as RTI closed-loop baselines.",
+        "- `acados_sqp` uses the same acados asset models with `nlp_solver_type=SQP`, `tol=qp_tol=1e-4`, and `nlp_solver_max_iter=60`; use these rows for the stricter MiniSolver-vs-acados full-solve comparison when their quality metrics pass the same gate.",
         "- `CasADi` uses native C++ runners with a pre-built `nlpsol('sqpmethod')` graph.",
         "- `ALTRO` uses ALTRO's C++ API and is currently limited to the convex robotics reference-tracking cases.",
         "- `max_constraint_violation` is the current closed-loop step violation, not the maximum predicted violation over the full horizon.",
@@ -195,12 +196,13 @@ def main() -> int:
         "- `ALTRO` is included only for the robotics reference-tracking cases. It is not run on the nonconvex driving NMPC cases.",
         "- `data_driven_mpc_loop_tracking` is the cleanest current all-backend robotics baseline, including ALTRO.",
         "- `data_driven_mpc_lemniscate_tracking` remains a useful robotics benchmark, but ALTRO currently hits `MaxInnerIterations` on the later closed-loop steps. Treat that row as robustness/tuning evidence, not as a pure ALTRO latency comparison.",
+        "- Current `acados_sqp` driving rows fail the same closed-loop quality gate because their success rate is below 1.0 and tracking/constraint metrics are not comparable to MiniSolver. Do not use those rows for strict solver-speed ranking yet.",
         "- `nonlinear_mpcc_porto_following` and `nonlinear_mpcc_fssim_following` are the current driving baselines. Interpret success, tracking, and latency together; none of the three solvers dominates every metric.",
         "- `mpcc_track_following` should not be used for headline conclusions yet. It is still exposing model/setup mismatch rather than a stable solver ranking.",
         "",
         "## Files",
         "",
-        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/casadi/`, `results/raw/clarabel/`, `results/raw/altro/`",
+        "- Raw CSVs: `results/raw/minisolver/`, `results/raw/acados/`, `results/raw/acados_sqp/`, `results/raw/casadi/`, `results/raw/clarabel/`, `results/raw/altro/`",
         "- Aggregate CSV: `results/summary.csv`",
         "- Aggregate JSON: `results/summary.json`",
     ]

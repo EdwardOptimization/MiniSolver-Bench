@@ -209,7 +209,7 @@ static void shift_warm_start(ocp_nlp_config *config, ocp_nlp_dims *dims,
 int main(int argc, char **argv)
 {
     const char *asset_path = NULL;
-    const char *output_path = "results/raw/acados/@CANDIDATE_NAME@.csv";
+    const char *output_path = "results/raw/@ACADOS_BACKEND@/@CANDIDATE_NAME@.csv";
     int steps = STEPS_DEFAULT;
     for (int i = 1; i < argc; ++i)
     {

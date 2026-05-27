@@ -164,6 +164,14 @@ python3 backends/acados/run_candidates.py \
   --acados-repo third_party/acados
 ```
 
+Run the stricter acados full-SQP asset profile:
+
+```bash
+python3 backends/acados/run_candidates.py \
+  --acados-repo third_party/acados \
+  --profile sqp
+```
+
 Run all public-asset-derived CasADi benchmark candidates:
 
 ```bash

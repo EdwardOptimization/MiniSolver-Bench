@@ -91,8 +91,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export, build and run one asset-derived acados benchmark candidate.")
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--acados-repo", type=Path, default=default_acados_repo())
-    parser.add_argument("--output-root", type=Path, default=Path("out/acados_assets"))
-    parser.add_argument("--results-root", type=Path, default=Path("results/raw/acados"))
+    parser.add_argument("--profile", choices=["rti", "sqp"], default="rti")
+    parser.add_argument("--output-root", type=Path, default=None)
+    parser.add_argument("--results-root", type=Path, default=None)
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--skip-export", action="store_true")
@@ -105,7 +106,20 @@ def _model_upper(name: str) -> str:
     return name.upper()
 
 
-def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
+def configure_solver_profile(ocp, profile: str) -> None:
+    ocp.solver_options.tol = 1e-4
+    ocp.solver_options.qp_tol = 1e-4
+    if profile == "rti":
+        ocp.solver_options.nlp_solver_type = "SQP_RTI"
+        return
+    if profile == "sqp":
+        ocp.solver_options.nlp_solver_type = "SQP"
+        ocp.solver_options.nlp_solver_max_iter = 60
+        return
+    raise ValueError(f"unsupported acados profile: {profile}")
+
+
+def export_kinematic_bicycle(candidate: dict, case_root: Path, profile: str) -> dict:
     import casadi as ca
     from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 
@@ -216,11 +230,7 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps = 1
-    # Fastest closed-loop mode in acados is RTI (one SQP iteration split into preparation + feedback).
-    # This matches the intended deployment pattern for embedded NMPC.
-    ocp.solver_options.nlp_solver_type = "SQP_RTI"
-    ocp.solver_options.tol = 1e-4
-    ocp.solver_options.qp_tol = 1e-4
+    configure_solver_profile(ocp, profile)
 
     generated_dir = case_root / "generated"
     json_file = case_root / "acados_ocp_kinematic_bicycle_asset.json"
@@ -234,6 +244,8 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
         "generated_dir": str(generated_dir),
         "json_file": str(json_file),
         "runner_template": "kinematic_bicycle_asset_main.c.in",
+        "profile": profile,
+        "use_rti": profile == "rti",
         "horizon": horizon,
         "dt": dt,
         "target_speed_mps": float(candidate.get("target_speed_mps", 0.0)),
@@ -243,7 +255,7 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path) -> dict:
     }
 
 
-def export_double_integrator_3d(candidate: dict, case_root: Path) -> dict:
+def export_double_integrator_3d(candidate: dict, case_root: Path, profile: str) -> dict:
     import casadi as ca
     from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 
@@ -302,9 +314,7 @@ def export_double_integrator_3d(candidate: dict, case_root: Path) -> dict:
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps = 1
-    ocp.solver_options.nlp_solver_type = "SQP_RTI"
-    ocp.solver_options.tol = 1e-4
-    ocp.solver_options.qp_tol = 1e-4
+    configure_solver_profile(ocp, profile)
 
     generated_dir = case_root / "generated"
     json_file = case_root / "acados_ocp_double_integrator_3d_asset.json"
@@ -318,6 +328,8 @@ def export_double_integrator_3d(candidate: dict, case_root: Path) -> dict:
         "generated_dir": str(generated_dir),
         "json_file": str(json_file),
         "runner_template": "double_integrator_3d_asset_main.c.in",
+        "profile": profile,
+        "use_rti": profile == "rti",
         "horizon": horizon,
         "dt": dt,
         "defaults": {"steps": int(candidate["closed_loop_steps"])},
@@ -333,6 +345,7 @@ EXPORTERS = {
 def render_runner(metadata: dict, template_dir: Path) -> str:
     text = (template_dir / metadata["runner_template"]).read_text(encoding="utf-8")
     delta_max = float(metadata.get("delta_max", 0.50))
+    backend_name = "acados" if metadata.get("profile", "rti") == "rti" else "acados_sqp"
     replacements = {
         "@CANDIDATE_NAME@": metadata["candidate_name"],
         "@MODEL_NAME@": metadata["model_name"],
@@ -343,6 +356,9 @@ def render_runner(metadata: dict, template_dir: Path) -> str:
         "@WHEELBASE@": f"{float(metadata.get('wheelbase', 0.33)):.17g}",
         "@DELTA_MAX@": f"{delta_max:.17g}",
         "@DELTA_MIN@": f"{-delta_max:.17g}",
+        "@USE_RTI@": "1" if metadata.get("use_rti", True) else "0",
+        "@ACADOS_PROFILE@": str(metadata.get("profile", "rti")),
+        "@ACADOS_BACKEND@": backend_name,
     }
     for key, value in replacements.items():
         text = text.replace(key, value)
@@ -381,6 +397,10 @@ def main() -> int:
     args = parse_args()
     candidate = load_candidate(args.candidate)
     candidate_name = candidate["name"]
+    if args.output_root is None:
+        args.output_root = Path("out/acados_assets" if args.profile == "rti" else "out/acados_assets_sqp")
+    if args.results_root is None:
+        args.results_root = Path("results/raw/acados" if args.profile == "rti" else "results/raw/acados_sqp")
     case_root = args.output_root / candidate_name
     case_root.mkdir(parents=True, exist_ok=True)
     metadata_path = case_root / "metadata.json"
@@ -394,7 +414,7 @@ def main() -> int:
         exporter = EXPORTERS.get(candidate["model_family"])
         if exporter is None:
             fail(f"unsupported model_family for acados asset backend: {candidate['model_family']}")
-        metadata = exporter(candidate, case_root)
+        metadata = exporter(candidate, case_root, args.profile)
         dump_json(metadata_path, metadata)
     else:
         if not metadata_path.exists():

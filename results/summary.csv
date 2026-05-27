@@ -8,6 +8,11 @@ avg_abs_b,avg_abs_n,avg_iterations,avg_speed,avg_tracking_error,backend,backend_
 ,,1.0,,,acados,acados,pendulum_on_cart,results/raw/acados/pendulum_on_cart.csv,0.024740132,,,1.485,0.5495000000000001,,0.8693,100,1.0
 1.654004533844189e-05,5.49982343550447e-05,,,,acados,acados,quadrotor_nav,results/raw/acados/quadrotor_nav.csv,,,,3.597,2.5,,2.6304999999999996,1566,1.0
 ,,,1.3520701275348836,,acados,acados,race_cars,results/raw/acados/race_cars.csv,,,,1.443,0.726,,0.9477999999999996,344,1.0
+,,1.0,,0.09516791963999999,acados_sqp,acados_sqp,data_driven_mpc_lemniscate_tracking,results/raw/acados_sqp/data_driven_mpc_lemniscate_tracking.csv,,0.001643018,0.0,0.217513084,0.0911815165,,0.14149098965,500,1.0
+,,1.0,,0.021465677586,acados_sqp,acados_sqp,data_driven_mpc_loop_tracking,results/raw/acados_sqp/data_driven_mpc_loop_tracking.csv,,0.001938373,0.0,0.221523046,0.088871002,,0.11885500574999999,500,1.0
+,,8.168067226890756,5.7624552643125,0.5214456269450001,acados_sqp,acados_sqp,mpcc_track_following,results/raw/acados_sqp/mpcc_track_following.csv,,2.528059926,1.719866144,43.215597987,6.368148446,,30.9401983974,400,0.595
+,,1.3541666666666667,9.721054678181666,0.6803071982825,acados_sqp,acados_sqp,nonlinear_mpcc_fssim_following,results/raw/acados_sqp/nonlinear_mpcc_fssim_following.csv,,0.752175157,0.0,70.251001,40.008050501499994,,58.696293258249995,1200,0.36
+,,1.609375,9.577251178941667,0.8123465629200001,acados_sqp,acados_sqp,nonlinear_mpcc_porto_following,results/raw/acados_sqp/nonlinear_mpcc_porto_following.csv,,1.926836204,0.509086193,57.188609004,41.1813489795,,49.7795425534,600,0.21333333333333335
 ,,2.2783505154639174,,195.2601854603091,altro,altro,data_driven_mpc_lemniscate_tracking,results/raw/altro/data_driven_mpc_lemniscate_tracking.csv,,1006.3954445512308,3.53391888943122e-05,13.659507,9.429321,,9.7172082,500,0.388
 ,,2.0,,0.027385818469444222,altro,altro,data_driven_mpc_loop_tracking,results/raw/altro/data_driven_mpc_loop_tracking.csv,,0.0023296386130704718,0.0,0.269874,0.14442149999999998,,0.165051,500,1.0
 ,,2.32,,,casadi,casadi,chain_mass,results/raw/casadi/chain_mass.csv,,,,408.922474016,360.628576949,-0.000475765,387.1481835606,25,1.0
