@@ -118,8 +118,8 @@ SolverConfig make_config() {
     config.enable_feasibility_restoration = true;
     config.enable_slack_reset = true;
     config.max_iters = 60;
-    config.tol_con = 1e-3;
-    config.tol_dual = 1e-3;
+    config.tol_con = 1e-4;
+    config.tol_dual = 1e-4;
     config.backend = Backend::CPU_SERIAL;
     return config;
 }

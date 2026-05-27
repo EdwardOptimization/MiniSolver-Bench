@@ -146,7 +146,7 @@ def main() -> int:
         "",
         "Same-case, closed-loop, end-to-end solver comparison for public-asset-derived candidates.",
         "",
-        "This is the repository's current headline report for solver ranking. "
+        "This is the repository's current end-to-end closed-loop asset report, not a strict solver-core full-solve ranking. "
         "It covers public-asset-derived cases; official `race_cars` and `quadrotor_nav` live in "
         "`results/latest_report.md` and use MiniSolver callback-refreshed spline jets.",
         "",
@@ -183,11 +183,11 @@ def main() -> int:
         "",
         "- `time_ms` is end-to-end wall-clock time around each solver call inside the closed-loop runner.",
         "- One-time export, graph construction, CMake configure/build, and report aggregation are excluded from timing.",
-        "- `comparable` means that backend supports the candidate and produced the candidate's requested closed-loop step count.",
+        "- `comparable` means that backend supports the candidate and produced the candidate's requested closed-loop step count. It does not by itself certify an equivalent full-solve optimality budget.",
         "- `missing` means the backend should be comparable for that candidate but no raw result is present in `results/raw/`.",
         "- `unsupported` means the backend does not implement that model family in this harness and is excluded from ranking for that case.",
-        "- `MiniSolver` uses generated models plus native C++ closed-loop runners.",
-        "- `acados` uses Python export/codegen plus compiled C closed-loop runners; export time is excluded.",
+        "- `MiniSolver` uses generated models plus native C++ closed-loop runners with `tol_con=tol_dual=1e-4` for asset candidates.",
+        "- `acados` uses Python export/codegen plus compiled C closed-loop runners; export time is excluded. Current asset rows use `SQP_RTI`, so treat them as RTI closed-loop baselines rather than strict `1e-4` full-solve solver-core rankings.",
         "- `CasADi` uses native C++ runners with a pre-built `nlpsol('sqpmethod')` graph.",
         "- `ALTRO` uses ALTRO's C++ API and is currently limited to the convex robotics reference-tracking cases.",
         "- `max_constraint_violation` is the current closed-loop step violation, not the maximum predicted violation over the full horizon.",
