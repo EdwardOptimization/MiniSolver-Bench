@@ -305,7 +305,7 @@ static void stage_params(const driving_track_t *track, double ref_s, double targ
 
 static void simulate_step(const double *state, double a, double delta_rate, double dt,
                           double wheelbase, double v_min, double v_max, double delta_min, double delta_max,
-                          double *next)
+                          bool wrap_psi, bool clamp_state, double *next)
 {
     double k1[5], k2[5], k3[5], k4[5], tmp[5];
     #define DERIV(src, out) \
@@ -328,11 +328,14 @@ static void simulate_step(const double *state, double a, double delta_rate, doub
     for (int i = 0; i < 5; ++i) {
         next[i] = state[i] + (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);
     }
-    next[2] = wrap_angle(next[2]);
-    if (next[3] < v_min) next[3] = v_min;
-    if (next[3] > v_max) next[3] = v_max;
-    if (next[4] < delta_min) next[4] = delta_min;
-    if (next[4] > delta_max) next[4] = delta_max;
+    if (wrap_psi) next[2] = wrap_angle(next[2]);
+    if (clamp_state)
+    {
+        if (next[3] < v_min) next[3] = v_min;
+        if (next[3] > v_max) next[3] = v_max;
+        if (next[4] < delta_min) next[4] = delta_min;
+        if (next[4] > delta_max) next[4] = delta_max;
+    }
 }
 
 static void shift_warm_start(ocp_nlp_config *config, ocp_nlp_dims *dims,
@@ -359,6 +362,29 @@ static void shift_warm_start(ocp_nlp_config *config, ocp_nlp_dims *dims,
         ocp_nlp_out_set(config, dims, out, in, k, "u", u_buf);
     }
     ocp_nlp_out_set(config, dims, out, in, N_HORIZON - 1, "u", u_end);
+}
+
+static void rollout_state_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
+                                ocp_nlp_in *in, ocp_nlp_out *out,
+                                const double *xcurrent, double dt, double wheelbase,
+                                double delta_min, double delta_max)
+{
+    double state[NX];
+    double next_state[NX];
+    double u_buf[NU];
+
+    for (int i = 0; i < NX; ++i) state[i] = xcurrent[i];
+    for (int k = 0; k <= N_HORIZON; ++k)
+    {
+        ocp_nlp_out_set(config, dims, out, in, k, "x", state);
+        if (k < N_HORIZON)
+        {
+            ocp_nlp_out_get(config, dims, out, k, "u", u_buf);
+            simulate_step(state, u_buf[0], u_buf[1], dt, wheelbase, 0.1, 12.0,
+                          delta_min, delta_max, false, false, next_state);
+            for (int i = 0; i < NX; ++i) state[i] = next_state[i];
+        }
+    }
 }
 
 static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
@@ -402,24 +428,25 @@ static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
     }
 
     double p_stage[NP];
-    double x_guess[NX];
     double u_buf[NU];
+    double rollout_state[NX];
+    if (xcurrent)
+    {
+        for (int i = 0; i < NX; ++i) rollout_state[i] = xcurrent[i];
+    }
+    else
+    {
+        stage_params(track, ref_s, target_speed, p_stage);
+        rollout_state[0] = p_stage[0];
+        rollout_state[1] = p_stage[1];
+        rollout_state[2] = p_stage[2];
+        rollout_state[3] = target_speed;
+        rollout_state[4] = delta_guess[0];
+    }
+
     for (int k = 0; k <= N_HORIZON; ++k)
     {
-        stage_params(track, ref_s + (double) k * target_speed * dt, target_speed, p_stage);
-        if (k == 0 && xcurrent)
-        {
-            for (int i = 0; i < NX; ++i) x_guess[i] = xcurrent[i];
-        }
-        else
-        {
-            x_guess[0] = p_stage[0];
-            x_guess[1] = p_stage[1];
-            x_guess[2] = p_stage[2];
-            x_guess[3] = target_speed;
-            x_guess[4] = delta_guess[k];
-        }
-        ocp_nlp_out_set(config, dims, out, in, k, "x", x_guess);
+        ocp_nlp_out_set(config, dims, out, in, k, "x", rollout_state);
         if (k < N_HORIZON)
         {
             u_buf[0] = u_guess[0];
@@ -432,6 +459,9 @@ static void seed_guess(ocp_nlp_config *config, ocp_nlp_dims *dims,
             }
             u_buf[1] = rate;
             ocp_nlp_out_set(config, dims, out, in, k, "u", u_buf);
+            double next_state[NX];
+            simulate_step(rollout_state, u_buf[0], u_buf[1], dt, wheelbase, 0.1, 12.0, delta_min, delta_max, false, false, next_state);
+            for (int i = 0; i < NX; ++i) rollout_state[i] = next_state[i];
         }
     }
 }
@@ -505,12 +535,18 @@ int main(int argc, char **argv)
     int ref_idx = 0;
     double ref_s = track.s[0];
     double last_applied_u[NU] = {0.0, 0.0};
+    bool prev_success = false;
 
     seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, wheelbase, delta_min, delta_max, xcurrent, last_applied_u);
     for (int step = 0; step < steps; ++step)
     {
+        if (step > 0 && !prev_success)
+        {
+            seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, wheelbase, delta_min, delta_max, xcurrent, last_applied_u);
+        }
+
         ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, 0, "x", xcurrent);
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, 0, "u", last_applied_u);
+        rollout_state_guess(nlp_config, nlp_dims, nlp_in, nlp_out, xcurrent, dt, wheelbase, delta_min, delta_max);
 
         double p_stage[NP];
         for (int k = 0; k <= N_HORIZON; ++k)
@@ -579,20 +615,22 @@ int main(int argc, char **argv)
         bool u_ok = isfinite(u0[0]) && isfinite(u0[1])
             && u0[0] >= a_min && u0[0] <= a_max
             && u0[1] >= delta_rate_min && u0[1] <= delta_rate_max;
-        if (u_ok)
+        const bool solve_ok = (status == 0);
+        if (solve_ok && u_ok)
         {
             last_applied_u[0] = u0[0];
             last_applied_u[1] = u0[1];
             shift_warm_start(nlp_config, nlp_dims, nlp_in, nlp_out);
+            prev_success = true;
         }
         else
         {
-            seed_guess(nlp_config, nlp_dims, nlp_in, nlp_out, &track, ref_s, target_speed, dt, wheelbase, delta_min, delta_max, xcurrent, last_applied_u);
+            prev_success = false;
         }
         times[step] = elapsed_ms;
 
         double xnext[NX];
-        simulate_step(xcurrent, last_applied_u[0], last_applied_u[1], dt, wheelbase, v_min, v_max, delta_min, delta_max, xnext);
+        simulate_step(xcurrent, last_applied_u[0], last_applied_u[1], dt, wheelbase, v_min, v_max, delta_min, delta_max, true, true, xnext);
         for (int i = 0; i < NX; ++i) xcurrent[i] = xnext[i];
         ref_s += target_speed * dt;
         double next_ref[7];

@@ -106,7 +106,7 @@ def _model_upper(name: str) -> str:
     return name.upper()
 
 
-def configure_solver_profile(ocp, profile: str) -> None:
+def configure_solver_profile(ocp, profile: str, *, driving: bool = False) -> None:
     ocp.solver_options.tol = 1e-4
     ocp.solver_options.qp_tol = 1e-4
     if profile == "rti":
@@ -115,6 +115,10 @@ def configure_solver_profile(ocp, profile: str) -> None:
     if profile == "sqp":
         ocp.solver_options.nlp_solver_type = "SQP"
         ocp.solver_options.nlp_solver_max_iter = 60
+        ocp.solver_options.eval_residual_at_max_iter = True
+        if driving:
+            ocp.solver_options.nlp_solver_warm_start_first_qp = True
+            ocp.solver_options.nlp_solver_warm_start_first_qp_from_nlp = True
         return
     raise ValueError(f"unsupported acados profile: {profile}")
 
@@ -155,6 +159,20 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path, profile: str) -> 
         accel,
         delta_rate,
     )
+    def f_cont(xv, uv):
+        return ca.vertcat(
+            xv[3] * ca.cos(xv[2]),
+            xv[3] * ca.sin(xv[2]),
+            xv[3] * ca.tan(xv[4]) / wheelbase,
+            uv[0],
+            uv[1],
+        )
+
+    k1 = f_cont(state, control)
+    k2 = f_cont(state + 0.5 * dt * k1, control)
+    k3 = f_cont(state + 0.5 * dt * k2, control)
+    k4 = f_cont(state + dt * k3, control)
+    discrete_next = state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
     psi_error = ca.atan2(ca.sin(psi - psi_ref), ca.cos(psi - psi_ref))
     lateral = n_x * (x - x_ref) + n_y * (y - y_ref)
@@ -167,6 +185,7 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path, profile: str) -> 
     model.p = p
     model.f_expl_expr = f_expl
     model.f_impl_expr = model.xdot - f_expl
+    model.disc_dyn_expr = discrete_next
     model.cost_y_expr = ca.vertcat(x - x_ref, y - y_ref, psi_error, v - v_ref, delta, accel, delta_rate)
     model.cost_y_expr_e = ca.vertcat(x - x_ref, y - y_ref, psi_error, v - v_ref, delta)
     model.con_h_expr = ca.vertcat(
@@ -227,10 +246,8 @@ def export_kinematic_bicycle(candidate: dict, case_root: Path, profile: str) -> 
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.qp_solver_cond_N = horizon
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-    ocp.solver_options.integrator_type = "ERK"
-    ocp.solver_options.sim_method_num_stages = 4
-    ocp.solver_options.sim_method_num_steps = 1
-    configure_solver_profile(ocp, profile)
+    ocp.solver_options.integrator_type = "DISCRETE"
+    configure_solver_profile(ocp, profile, driving=True)
 
     generated_dir = case_root / "generated"
     json_file = case_root / "acados_ocp_kinematic_bicycle_asset.json"
