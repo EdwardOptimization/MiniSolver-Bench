@@ -119,9 +119,9 @@ def render_case_notes() -> list[str]:
         "- `acados` is benchmarked through official Python export plus compiled C runtime. Python codegen is not included in runtime timings.",
         "- `MiniSolver` is benchmarked as a native in-process C++ target, not through an adapter layer.",
         "- `CasADi` is benchmarked through a pre-built `nlpsol('sqpmethod')` graph with `qrqp` as the QP backend. Model construction is excluded from the per-step timings; the timed region is the repeated SQP solve call in the closed loop.",
-        "- `pendulum_on_cart`, `race_cars`, and `quadrotor_nav` use RTI-style single-iteration closed-loop runs on both sides.",
+        "- `pendulum_on_cart` keeps the official RTI-style single-iteration setup. `quadrotor_nav` remains an RTI-style official closed-loop baseline. `race_cars` uses a quality-first MiniSolver `ACCEPTABLE_NMPC` multi-iteration profile with `tol_con=tol_dual=1e-4` and rollout globalization; acados keeps the official `SQP_RTI` setup.",
         "- `chain_mass` uses full SQP-style solves on both sides, matching the official acados setup.",
-        "- `race_cars` and `quadrotor_nav` contain piecewise track functions. MiniSolver runs them through generated C++ models with dcol-style model-update callbacks that refresh smooth local spline jets from the official track geometry.",
+        "- `race_cars` and `quadrotor_nav` contain piecewise track functions. MiniSolver runs them through generated C++ models with dcol-style model-update callbacks. `race_cars` refreshes a local ppoly segment window so RK substeps evaluate the track at their current state; `quadrotor_nav` refreshes smooth local spline jets.",
         "- `race_cars` and `quadrotor_nav` are official closed-loop cases with solver-dependent early termination. `steps` therefore measure executed closed-loop steps, not a fixed common horizon count.",
         "",
     ]

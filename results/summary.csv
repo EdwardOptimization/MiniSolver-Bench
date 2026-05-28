@@ -7,7 +7,7 @@ avg_abs_b,avg_abs_n,avg_iterations,avg_qp_iterations,avg_speed,avg_sqp_iteration
 ,,6.031719532554257,6.031719532554257,5.999212622381666,1.0,0.0021673406300000003,acados,acados,nonlinear_mpcc_porto_following,results/raw/acados/nonlinear_mpcc_porto_following.csv,,6.9928e-05,0.0,0.637907028,0.311228514,,0.35803097489999997,600,0.9983333333333333
 ,,1.0,,,1.0,,acados,acados,pendulum_on_cart,results/raw/acados/pendulum_on_cart.csv,0.024740132,,,1.485,0.5495000000000001,,0.8693,100,1.0
 1.654004533844189e-05,5.49982343550447e-05,,,,,,acados,acados,quadrotor_nav,results/raw/acados/quadrotor_nav.csv,,,,3.597,2.5,,2.6304999999999996,1566,1.0
-,,,,1.3520701275348836,,,acados,acados,race_cars,results/raw/acados/race_cars.csv,,,,1.443,0.726,,0.9477999999999996,344,1.0
+,,10.593023255813954,10.593023255813954,1.3520701275348836,1.0,,acados,acados,race_cars,results/raw/acados/race_cars.csv,,,,2.129,0.724,,0.92685,344,1.0
 ,,2.54,2.54,,1.0,0.09516791963999999,acados_sqp,acados_sqp,data_driven_mpc_lemniscate_tracking,results/raw/acados_sqp/data_driven_mpc_lemniscate_tracking.csv,,0.001643018,0.0,0.187521935,0.087486446,,0.13713542239999998,500,1.0
 ,,2.078,2.078,,1.0,0.021465677586,acados_sqp,acados_sqp,data_driven_mpc_loop_tracking,results/raw/acados_sqp/data_driven_mpc_loop_tracking.csv,,0.001938373,0.0,0.253082991,0.087090969,,0.10836147069999993,500,1.0
 ,,12.8425,12.8425,2.4966812646275,1.83,0.010074547625000001,acados_sqp,acados_sqp,mpcc_track_following,results/raw/acados_sqp/mpcc_track_following.csv,,0.002577966,0.0,1.190065026,0.5933225154999999,,0.93481137795,400,1.0
@@ -32,6 +32,6 @@ avg_abs_b,avg_abs_n,avg_iterations,avg_qp_iterations,avg_speed,avg_sqp_iteration
 ,,2.915,,2.496669752483723,,0.01006547774066417,minisolver,minisolver,mpcc_track_following,results/raw/minisolver/mpcc_track_following.csv,,0.002583046321636929,0.0,0.313634,0.112421,,0.15018450000000003,400,1.0
 ,,2.1016666666666666,,7.999309105040035,,0.0010613122291718217,minisolver,minisolver,nonlinear_mpcc_fssim_following,results/raw/minisolver/nonlinear_mpcc_fssim_following.csv,,0.0006308284565203259,0.0,0.435546,0.1309515,,0.16720699999999997,1200,1.0
 ,,2.328333333333333,,5.999177861516667,,0.0020893689354004813,minisolver,minisolver,nonlinear_mpcc_porto_following,results/raw/minisolver/nonlinear_mpcc_porto_following.csv,,6.99942394657996e-05,0.0,0.333784,0.11226649999999999,,0.1425815,600,1.0
-,,1.0,,,,,minisolver,minisolver,pendulum_on_cart,results/raw/minisolver/pendulum_on_cart.csv,0.00102476,,0.0,0.04714,0.036425,,0.040026,100,1.0
+,,1.0,,,,,minisolver,minisolver,pendulum_on_cart,results/raw/minisolver/pendulum_on_cart.csv,0.00102476,,0.0,0.05198,0.0365605,,0.04007755,100,1.0
 0.0008698599917435897,0.03997268696706026,1.0,,,,,minisolver,minisolver,quadrotor_nav,results/raw/minisolver/quadrotor_nav.csv,,,0.0,1.47449,1.242995,,1.299828,1560,1.0
-,,1.0,,1.4713146885200001,,,minisolver,minisolver,race_cars,results/raw/minisolver/race_cars.csv,,,0.0287803,0.565597,0.37900500000000004,,0.4071465,500,0.814
+,,7.7180451127819545,,1.3956884511278196,,,minisolver,minisolver,race_cars,results/raw/minisolver/race_cars.csv,,,0.0001059,5.49911,1.804805,,3.4545525,266,1.0

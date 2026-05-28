@@ -13,11 +13,15 @@ struct QuadrotorNavModel {
     static const int NX=20;
     static const int NU=4;
     static const int NC=1;
-    static const int NP=64;
-    static const int P_CALLBACK_TRACK_S_LIN=48;
-    static const int P_CALLBACK_TRACK_X_D1=49;
-    static const int P_CALLBACK_TRACK_Y_D1=54;
-    static const int P_CALLBACK_TRACK_Z_D1=59;
+    static const int NP=240;
+    static const int P_CALLBACK_WINDOW_SEGMENTS=9;
+    static const int P_CALLBACK_AXIS_STRIDE=64;
+    static const int P_CALLBACK_TRACK_X_BREAKS=48;
+    static const int P_CALLBACK_TRACK_X_COEFFS=P_CALLBACK_TRACK_X_BREAKS + P_CALLBACK_WINDOW_SEGMENTS + 1;
+    static const int P_CALLBACK_TRACK_Y_BREAKS=P_CALLBACK_TRACK_X_BREAKS + P_CALLBACK_AXIS_STRIDE;
+    static const int P_CALLBACK_TRACK_Y_COEFFS=P_CALLBACK_TRACK_Y_BREAKS + P_CALLBACK_WINDOW_SEGMENTS + 1;
+    static const int P_CALLBACK_TRACK_Z_BREAKS=P_CALLBACK_TRACK_Y_BREAKS + P_CALLBACK_AXIS_STRIDE;
+    static const int P_CALLBACK_TRACK_Z_COEFFS=P_CALLBACK_TRACK_Z_BREAKS + P_CALLBACK_WINDOW_SEGMENTS + 1;
 
     static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
@@ -3447,31 +3451,52 @@ struct QuadrotorNavModel {
     }
 
     template <typename T>
-    static inline T callback_quad_track_derivative(
-        const MSVec<T, NP>& p, const T& s, int base_idx, int order)
-    {
-        const T ds = s - p(P_CALLBACK_TRACK_S_LIN);
-        const T d1 = p(base_idx + 0);
-        const T d2 = p(base_idx + 1);
-        const T d3 = p(base_idx + 2);
-        const T d4 = p(base_idx + 3);
-        const T d5 = p(base_idx + 4);
-        switch (order) {
-            case 1:
-                return d1 + d2 * ds + T(0.5) * d3 * ds * ds
-                    + T(1.0 / 6.0) * d4 * ds * ds * ds
-                    + T(1.0 / 24.0) * d5 * ds * ds * ds * ds;
-            case 2:
-                return d2 + d3 * ds + T(0.5) * d4 * ds * ds
-                    + T(1.0 / 6.0) * d5 * ds * ds * ds;
-            case 3:
-                return d3 + d4 * ds + T(0.5) * d5 * ds * ds;
-            case 4:
-                return d4 + d5 * ds;
-            default:
-                return d5;
+    static inline int callback_quad_track_segment(const MSVec<T, NP>& p, const T& s, int break_base) {
+        const double sd = static_cast<double>(s);
+        if (sd < static_cast<double>(p(break_base))) {
+            return 0;
         }
+        if (sd >= static_cast<double>(p(break_base + P_CALLBACK_WINDOW_SEGMENTS))) {
+            return P_CALLBACK_WINDOW_SEGMENTS - 1;
+        }
+        for (int i = 0; i < P_CALLBACK_WINDOW_SEGMENTS; ++i) {
+            if (sd < static_cast<double>(p(break_base + i + 1))) {
+                return i;
+            }
+        }
+        return P_CALLBACK_WINDOW_SEGMENTS - 1;
     }
+
+    static inline double callback_quad_derivative_factor(int power, int order) {
+        double factor = 1.0;
+        for (int d = 0; d < order; ++d) {
+            factor *= static_cast<double>(power - d);
+        }
+        return factor;
+    }
+
+    template <typename T>
+    static inline T callback_quad_track_derivative(
+        const MSVec<T, NP>& p, const T& s, int break_base, int coeff_base, int order)
+    {
+        const int segment = callback_quad_track_segment(p, s, break_base);
+        const T ds = s - p(break_base + segment);
+        const int offset = coeff_base + 6 * segment;
+        T result = T(0.0);
+        for (int i = 0; i < 6; ++i) {
+            const int power = 5 - i;
+            if (power < order) {
+                continue;
+            }
+            T term = T(callback_quad_derivative_factor(power, order)) * p(offset + i);
+            for (int e = 0; e < power - order; ++e) {
+                term *= ds;
+            }
+            result += term;
+        }
+        return result;
+    }
+
 
 
     // --- Continuous Dynamics + Jacobians (Generated) ---
@@ -3505,21 +3530,21 @@ template<typename T>
         T alpha2 = u_in(1);
         T alpha3 = u_in(2);
         T alpha4 = u_in(3);
-        const auto ppoly_quad_track_x_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 1); };
-        const auto ppoly_quad_track_x_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 2); };
-        const auto ppoly_quad_track_x_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 3); };
-        const auto ppoly_quad_track_x_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 4); };
-        const auto ppoly_quad_track_x_d5 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 5); };
-        const auto ppoly_quad_track_y_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 1); };
-        const auto ppoly_quad_track_y_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 2); };
-        const auto ppoly_quad_track_y_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 3); };
-        const auto ppoly_quad_track_y_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 4); };
-        const auto ppoly_quad_track_y_d5 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 5); };
-        const auto ppoly_quad_track_z_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 1); };
-        const auto ppoly_quad_track_z_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 2); };
-        const auto ppoly_quad_track_z_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 3); };
-        const auto ppoly_quad_track_z_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 4); };
-        const auto ppoly_quad_track_z_d5 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 5); };
+        const auto ppoly_quad_track_x_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 1); };
+        const auto ppoly_quad_track_x_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 2); };
+        const auto ppoly_quad_track_x_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 3); };
+        const auto ppoly_quad_track_x_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 4); };
+        const auto ppoly_quad_track_x_d5 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 5); };
+        const auto ppoly_quad_track_y_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 1); };
+        const auto ppoly_quad_track_y_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 2); };
+        const auto ppoly_quad_track_y_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 3); };
+        const auto ppoly_quad_track_y_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 4); };
+        const auto ppoly_quad_track_y_d5 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 5); };
+        const auto ppoly_quad_track_z_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 1); };
+        const auto ppoly_quad_track_z_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 2); };
+        const auto ppoly_quad_track_z_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 3); };
+        const auto ppoly_quad_track_z_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 4); };
+        const auto ppoly_quad_track_z_d5 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 5); };
 
         // CSE Intermediate Variables
         T tmp_f0 = /* Not supported in C: */
@@ -4105,22 +4130,198 @@ ppoly_quad_track_z_d5(s);
         "wu1",
         "wu2",
         "wu3",
-        "track_s_lin",
-        "quad_track_x_d1",
-        "quad_track_x_d2",
-        "quad_track_x_d3",
-        "quad_track_x_d4",
-        "quad_track_x_d5",
-        "quad_track_y_d1",
-        "quad_track_y_d2",
-        "quad_track_y_d3",
-        "quad_track_y_d4",
-        "quad_track_y_d5",
-        "quad_track_z_d1",
-        "quad_track_z_d2",
-        "quad_track_z_d3",
-        "quad_track_z_d4",
-        "quad_track_z_d5",
+        "quad_track_x_break_0",
+        "quad_track_x_break_1",
+        "quad_track_x_break_2",
+        "quad_track_x_break_3",
+        "quad_track_x_break_4",
+        "quad_track_x_break_5",
+        "quad_track_x_break_6",
+        "quad_track_x_break_7",
+        "quad_track_x_break_8",
+        "quad_track_x_break_9",
+        "quad_track_x_c0_0",
+        "quad_track_x_c1_0",
+        "quad_track_x_c2_0",
+        "quad_track_x_c3_0",
+        "quad_track_x_c4_0",
+        "quad_track_x_c5_0",
+        "quad_track_x_c0_1",
+        "quad_track_x_c1_1",
+        "quad_track_x_c2_1",
+        "quad_track_x_c3_1",
+        "quad_track_x_c4_1",
+        "quad_track_x_c5_1",
+        "quad_track_x_c0_2",
+        "quad_track_x_c1_2",
+        "quad_track_x_c2_2",
+        "quad_track_x_c3_2",
+        "quad_track_x_c4_2",
+        "quad_track_x_c5_2",
+        "quad_track_x_c0_3",
+        "quad_track_x_c1_3",
+        "quad_track_x_c2_3",
+        "quad_track_x_c3_3",
+        "quad_track_x_c4_3",
+        "quad_track_x_c5_3",
+        "quad_track_x_c0_4",
+        "quad_track_x_c1_4",
+        "quad_track_x_c2_4",
+        "quad_track_x_c3_4",
+        "quad_track_x_c4_4",
+        "quad_track_x_c5_4",
+        "quad_track_x_c0_5",
+        "quad_track_x_c1_5",
+        "quad_track_x_c2_5",
+        "quad_track_x_c3_5",
+        "quad_track_x_c4_5",
+        "quad_track_x_c5_5",
+        "quad_track_x_c0_6",
+        "quad_track_x_c1_6",
+        "quad_track_x_c2_6",
+        "quad_track_x_c3_6",
+        "quad_track_x_c4_6",
+        "quad_track_x_c5_6",
+        "quad_track_x_c0_7",
+        "quad_track_x_c1_7",
+        "quad_track_x_c2_7",
+        "quad_track_x_c3_7",
+        "quad_track_x_c4_7",
+        "quad_track_x_c5_7",
+        "quad_track_x_c0_8",
+        "quad_track_x_c1_8",
+        "quad_track_x_c2_8",
+        "quad_track_x_c3_8",
+        "quad_track_x_c4_8",
+        "quad_track_x_c5_8",
+        "quad_track_y_break_0",
+        "quad_track_y_break_1",
+        "quad_track_y_break_2",
+        "quad_track_y_break_3",
+        "quad_track_y_break_4",
+        "quad_track_y_break_5",
+        "quad_track_y_break_6",
+        "quad_track_y_break_7",
+        "quad_track_y_break_8",
+        "quad_track_y_break_9",
+        "quad_track_y_c0_0",
+        "quad_track_y_c1_0",
+        "quad_track_y_c2_0",
+        "quad_track_y_c3_0",
+        "quad_track_y_c4_0",
+        "quad_track_y_c5_0",
+        "quad_track_y_c0_1",
+        "quad_track_y_c1_1",
+        "quad_track_y_c2_1",
+        "quad_track_y_c3_1",
+        "quad_track_y_c4_1",
+        "quad_track_y_c5_1",
+        "quad_track_y_c0_2",
+        "quad_track_y_c1_2",
+        "quad_track_y_c2_2",
+        "quad_track_y_c3_2",
+        "quad_track_y_c4_2",
+        "quad_track_y_c5_2",
+        "quad_track_y_c0_3",
+        "quad_track_y_c1_3",
+        "quad_track_y_c2_3",
+        "quad_track_y_c3_3",
+        "quad_track_y_c4_3",
+        "quad_track_y_c5_3",
+        "quad_track_y_c0_4",
+        "quad_track_y_c1_4",
+        "quad_track_y_c2_4",
+        "quad_track_y_c3_4",
+        "quad_track_y_c4_4",
+        "quad_track_y_c5_4",
+        "quad_track_y_c0_5",
+        "quad_track_y_c1_5",
+        "quad_track_y_c2_5",
+        "quad_track_y_c3_5",
+        "quad_track_y_c4_5",
+        "quad_track_y_c5_5",
+        "quad_track_y_c0_6",
+        "quad_track_y_c1_6",
+        "quad_track_y_c2_6",
+        "quad_track_y_c3_6",
+        "quad_track_y_c4_6",
+        "quad_track_y_c5_6",
+        "quad_track_y_c0_7",
+        "quad_track_y_c1_7",
+        "quad_track_y_c2_7",
+        "quad_track_y_c3_7",
+        "quad_track_y_c4_7",
+        "quad_track_y_c5_7",
+        "quad_track_y_c0_8",
+        "quad_track_y_c1_8",
+        "quad_track_y_c2_8",
+        "quad_track_y_c3_8",
+        "quad_track_y_c4_8",
+        "quad_track_y_c5_8",
+        "quad_track_z_break_0",
+        "quad_track_z_break_1",
+        "quad_track_z_break_2",
+        "quad_track_z_break_3",
+        "quad_track_z_break_4",
+        "quad_track_z_break_5",
+        "quad_track_z_break_6",
+        "quad_track_z_break_7",
+        "quad_track_z_break_8",
+        "quad_track_z_break_9",
+        "quad_track_z_c0_0",
+        "quad_track_z_c1_0",
+        "quad_track_z_c2_0",
+        "quad_track_z_c3_0",
+        "quad_track_z_c4_0",
+        "quad_track_z_c5_0",
+        "quad_track_z_c0_1",
+        "quad_track_z_c1_1",
+        "quad_track_z_c2_1",
+        "quad_track_z_c3_1",
+        "quad_track_z_c4_1",
+        "quad_track_z_c5_1",
+        "quad_track_z_c0_2",
+        "quad_track_z_c1_2",
+        "quad_track_z_c2_2",
+        "quad_track_z_c3_2",
+        "quad_track_z_c4_2",
+        "quad_track_z_c5_2",
+        "quad_track_z_c0_3",
+        "quad_track_z_c1_3",
+        "quad_track_z_c2_3",
+        "quad_track_z_c3_3",
+        "quad_track_z_c4_3",
+        "quad_track_z_c5_3",
+        "quad_track_z_c0_4",
+        "quad_track_z_c1_4",
+        "quad_track_z_c2_4",
+        "quad_track_z_c3_4",
+        "quad_track_z_c4_4",
+        "quad_track_z_c5_4",
+        "quad_track_z_c0_5",
+        "quad_track_z_c1_5",
+        "quad_track_z_c2_5",
+        "quad_track_z_c3_5",
+        "quad_track_z_c4_5",
+        "quad_track_z_c5_5",
+        "quad_track_z_c0_6",
+        "quad_track_z_c1_6",
+        "quad_track_z_c2_6",
+        "quad_track_z_c3_6",
+        "quad_track_z_c4_6",
+        "quad_track_z_c5_6",
+        "quad_track_z_c0_7",
+        "quad_track_z_c1_7",
+        "quad_track_z_c2_7",
+        "quad_track_z_c3_7",
+        "quad_track_z_c4_7",
+        "quad_track_z_c5_7",
+        "quad_track_z_c0_8",
+        "quad_track_z_c1_8",
+        "quad_track_z_c2_8",
+        "quad_track_z_c3_8",
+        "quad_track_z_c4_8",
+        "quad_track_z_c5_8",
     };
 
 
@@ -4152,18 +4353,18 @@ ppoly_quad_track_z_d5(s);
         T alpha2 = u_in(1);
         T alpha3 = u_in(2);
         T alpha4 = u_in(3);
-        const auto ppoly_quad_track_x_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 1); };
-        const auto ppoly_quad_track_x_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 2); };
-        const auto ppoly_quad_track_x_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 3); };
-        const auto ppoly_quad_track_x_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_D1, 4); };
-        const auto ppoly_quad_track_y_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 1); };
-        const auto ppoly_quad_track_y_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 2); };
-        const auto ppoly_quad_track_y_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 3); };
-        const auto ppoly_quad_track_y_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_D1, 4); };
-        const auto ppoly_quad_track_z_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 1); };
-        const auto ppoly_quad_track_z_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 2); };
-        const auto ppoly_quad_track_z_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 3); };
-        const auto ppoly_quad_track_z_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_D1, 4); };
+        const auto ppoly_quad_track_x_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 1); };
+        const auto ppoly_quad_track_x_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 2); };
+        const auto ppoly_quad_track_x_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 3); };
+        const auto ppoly_quad_track_x_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 4); };
+        const auto ppoly_quad_track_y_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 1); };
+        const auto ppoly_quad_track_y_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 2); };
+        const auto ppoly_quad_track_y_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 3); };
+        const auto ppoly_quad_track_y_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 4); };
+        const auto ppoly_quad_track_z_d1 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 1); };
+        const auto ppoly_quad_track_z_d2 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 2); };
+        const auto ppoly_quad_track_z_d3 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 3); };
+        const auto ppoly_quad_track_z_d4 = [&](const T& value) { return callback_quad_track_derivative(p_in, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 4); };
 
         MSVec<T, NX> xdot;
         xdot(0) = /* Not supported in C: */
@@ -4386,12 +4587,12 @@ b*((vx*(vx*ppoly_quad_track_x_d1(s) + vy*ppoly_quad_track_y_d1(s) + vz*ppoly_qua
     static void compute_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
         T s = kp.x(0);
         T n = kp.x(1);
-        const auto ppoly_quad_track_x_d2 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_X_D1, 2); };
-        const auto ppoly_quad_track_x_d3 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_X_D1, 3); };
-        const auto ppoly_quad_track_y_d2 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Y_D1, 2); };
-        const auto ppoly_quad_track_y_d3 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Y_D1, 3); };
-        const auto ppoly_quad_track_z_d2 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Z_D1, 2); };
-        const auto ppoly_quad_track_z_d3 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Z_D1, 3); };
+        const auto ppoly_quad_track_x_d2 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 2); };
+        const auto ppoly_quad_track_x_d3 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_X_BREAKS, P_CALLBACK_TRACK_X_COEFFS, 3); };
+        const auto ppoly_quad_track_y_d2 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 2); };
+        const auto ppoly_quad_track_y_d3 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Y_BREAKS, P_CALLBACK_TRACK_Y_COEFFS, 3); };
+        const auto ppoly_quad_track_z_d2 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 2); };
+        const auto ppoly_quad_track_z_d3 = [&](const T& value) { return callback_quad_track_derivative(kp.p, value, P_CALLBACK_TRACK_Z_BREAKS, P_CALLBACK_TRACK_Z_COEFFS, 3); };
 
         // --- Special Constraints Pre-Calculation ---
 

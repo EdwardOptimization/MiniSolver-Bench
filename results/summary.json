@@ -127,14 +127,17 @@
     "success_rate": 1.0
   },
   {
+    "avg_iterations": 10.593023255813954,
+    "avg_qp_iterations": 10.593023255813954,
     "avg_speed": 1.3520701275348836,
+    "avg_sqp_iterations": 1.0,
     "backend": "acados",
     "backend_family": "acados",
     "case_name": "race_cars",
     "file": "results/raw/acados/race_cars.csv",
-    "max_ms": 1.443,
-    "median_ms": 0.726,
-    "p95_ms": 0.9477999999999996,
+    "max_ms": 2.129,
+    "median_ms": 0.724,
+    "p95_ms": 0.92685,
     "steps": 344,
     "success_rate": 1.0
   },
@@ -516,9 +519,9 @@
     "file": "results/raw/minisolver/pendulum_on_cart.csv",
     "final_theta_abs": 0.00102476,
     "max_constraint_violation": 0.0,
-    "max_ms": 0.04714,
-    "median_ms": 0.036425,
-    "p95_ms": 0.040026,
+    "max_ms": 0.05198,
+    "median_ms": 0.0365605,
+    "p95_ms": 0.04007755,
     "steps": 100,
     "success_rate": 1.0
   },
@@ -538,17 +541,17 @@
     "success_rate": 1.0
   },
   {
-    "avg_iterations": 1.0,
-    "avg_speed": 1.4713146885200001,
+    "avg_iterations": 7.7180451127819545,
+    "avg_speed": 1.3956884511278196,
     "backend": "minisolver",
     "backend_family": "minisolver",
     "case_name": "race_cars",
     "file": "results/raw/minisolver/race_cars.csv",
-    "max_constraint_violation": 0.0287803,
-    "max_ms": 0.565597,
-    "median_ms": 0.37900500000000004,
-    "p95_ms": 0.4071465,
-    "steps": 500,
-    "success_rate": 0.814
+    "max_constraint_violation": 0.0001059,
+    "max_ms": 5.49911,
+    "median_ms": 1.804805,
+    "p95_ms": 3.4545525,
+    "steps": 266,
+    "success_rate": 1.0
   }
 ]

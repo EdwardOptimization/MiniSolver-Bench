@@ -150,7 +150,7 @@ def main() -> int:
         "",
         "This is the repository's current end-to-end closed-loop asset report, not a strict solver-core full-solve ranking. "
         "It covers public-asset-derived cases; official `race_cars` and `quadrotor_nav` live in "
-        "`results/latest_report.md` and use MiniSolver callback-refreshed spline jets.",
+        "`results/latest_report.md` and use MiniSolver callback-refreshed track data.",
         "",
         "Each solver row uses the same asset, model family, `dt`, horizon, and requested closed-loop step count for that candidate. "
         "The timed region is the per-step solver call inside the closed-loop runner; one-time code generation, CMake configure/build, Python import time, and report aggregation are excluded.",

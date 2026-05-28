@@ -39,6 +39,47 @@ static double percentile(const double *values, int n, double frac)
     return out;
 }
 
+static int get_qp_iterations(ocp_nlp_solver *nlp_solver)
+{
+    int nlp_iter = 0;
+    int stat_m = 0;
+    int stat_n = 0;
+    ocp_nlp_get(nlp_solver, "nlp_iter", &nlp_iter);
+    ocp_nlp_get(nlp_solver, "stat_m", &stat_m);
+    ocp_nlp_get(nlp_solver, "stat_n", &stat_n);
+
+    const int nrow = nlp_iter + 1 < stat_m ? nlp_iter + 1 : stat_m;
+    if (nrow <= 0)
+    {
+        int qp_iter = 0;
+        ocp_nlp_get(nlp_solver, "qp_iter", &qp_iter);
+        return qp_iter;
+    }
+
+    double *stat = (double *) calloc((size_t) (stat_n + 1) * (size_t) nrow, sizeof(double));
+    if (!stat)
+    {
+        int qp_iter = 0;
+        ocp_nlp_get(nlp_solver, "qp_iter", &qp_iter);
+        return qp_iter;
+    }
+    ocp_nlp_get(nlp_solver, "statistics", stat);
+
+    const int qp_iter_col = stat_n == 2 ? 2 : 6;
+    const int first_qp_row = stat_n == 2 ? 0 : 1;
+    int total = 0;
+    if (qp_iter_col <= stat_n)
+    {
+        for (int i = first_qp_row; i < nrow; ++i)
+        {
+            const double value = stat[i + qp_iter_col * nrow];
+            if (isfinite(value) && value > 0.0) total += (int) llround(value);
+        }
+    }
+    free(stat);
+    return total;
+}
+
 int main(int argc, char **argv)
 {
     int max_steps = N_DEFAULT;
@@ -81,8 +122,21 @@ int main(int argc, char **argv)
     double xcurrent[NX] = {@X0_INIT@};
     double *times = (double *) calloc((size_t) max_steps, sizeof(double));
     int *statuses = (int *) calloc((size_t) max_steps, sizeof(int));
+    int *qp_iterations = (int *) calloc((size_t) max_steps, sizeof(int));
+    int *sqp_iterations = (int *) calloc((size_t) max_steps, sizeof(int));
     double *speeds = (double *) calloc((size_t) max_steps, sizeof(double));
     double *progress = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *time_qp = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *time_qp_solver = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *time_qp_xcond = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *time_lin = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *time_sim = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *normal = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *alpha = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *throttle = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *delta = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *derD = (double *) calloc((size_t) max_steps, sizeof(double));
+    double *derDelta = (double *) calloc((size_t) max_steps, sizeof(double));
 
     int executed = 0;
     double s0 = xcurrent[0];
@@ -106,7 +160,20 @@ int main(int argc, char **argv)
 
         int status = @MODEL_NAME@_acados_solve(solver_capsule);
         double elapsed = 0.0;
+        double qp_elapsed = 0.0;
+        double qp_solver_elapsed = 0.0;
+        double qp_xcond_elapsed = 0.0;
+        double lin_elapsed = 0.0;
+        double sim_elapsed = 0.0;
+        int sqp_iter = 0;
         ocp_nlp_get(nlp_solver, "time_tot", &elapsed);
+        ocp_nlp_get(nlp_solver, "time_qp", &qp_elapsed);
+        ocp_nlp_get(nlp_solver, "time_qp_solver_call", &qp_solver_elapsed);
+        ocp_nlp_get(nlp_solver, "time_qp_xcond", &qp_xcond_elapsed);
+        ocp_nlp_get(nlp_solver, "time_lin", &lin_elapsed);
+        ocp_nlp_get(nlp_solver, "time_sim", &sim_elapsed);
+        ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
+        const int qp_iter = get_qp_iterations(nlp_solver);
 
         double u0[NU];
         ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u0);
@@ -121,8 +188,21 @@ int main(int argc, char **argv)
 
         times[step] = elapsed * 1000.0;
         statuses[step] = status;
-        speeds[step] = xcurrent[3];
+        qp_iterations[step] = qp_iter;
+        sqp_iterations[step] = sqp_iter;
+        time_qp[step] = qp_elapsed * 1000.0;
+        time_qp_solver[step] = qp_solver_elapsed * 1000.0;
+        time_qp_xcond[step] = qp_xcond_elapsed * 1000.0;
+        time_lin[step] = lin_elapsed * 1000.0;
+        time_sim[step] = sim_elapsed * 1000.0;
         progress[step] = xcurrent[0];
+        normal[step] = xcurrent[1];
+        alpha[step] = xcurrent[2];
+        speeds[step] = xcurrent[3];
+        throttle[step] = xcurrent[4];
+        delta[step] = xcurrent[5];
+        derD[step] = u0[0];
+        derDelta[step] = u0[1];
         executed = step + 1;
         s0 = xcurrent[0];
         if (xcurrent[0] > @TRACK_PATHLENGTH@ + 0.1)
@@ -137,13 +217,17 @@ int main(int argc, char **argv)
         perror("fopen");
         return 1;
     }
-    fprintf(csv, "step,status,time_ms,s,v\n");
+    fprintf(csv, "step,status,time_ms,qp_iterations,sqp_iterations,time_qp_ms,time_qp_solver_ms,time_qp_xcond_ms,time_lin_ms,time_sim_ms,s,n,alpha,v,D,delta,derD,derDelta\n");
     int success = 0;
     double max_ms = 0.0;
     double speed_sum = 0.0;
     for (int i = 0; i < executed; ++i)
     {
-        fprintf(csv, "%d,%d,%.9f,%.9f,%.9f\n", i, statuses[i], times[i], progress[i], speeds[i]);
+        fprintf(csv, "%d,%d,%.9f,%d,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
+                i, statuses[i], times[i], qp_iterations[i], sqp_iterations[i],
+                time_qp[i], time_qp_solver[i], time_qp_xcond[i], time_lin[i], time_sim[i],
+                progress[i], normal[i], alpha[i], speeds[i],
+                throttle[i], delta[i], derD[i], derDelta[i]);
         if (statuses[i] == 0) success++;
         if (times[i] > max_ms) max_ms = times[i];
         speed_sum += speeds[i];
@@ -162,8 +246,21 @@ int main(int argc, char **argv)
 
     free(times);
     free(statuses);
+    free(qp_iterations);
+    free(sqp_iterations);
     free(speeds);
     free(progress);
+    free(time_qp);
+    free(time_qp_solver);
+    free(time_qp_xcond);
+    free(time_lin);
+    free(time_sim);
+    free(normal);
+    free(alpha);
+    free(throttle);
+    free(delta);
+    free(derD);
+    free(derDelta);
     @MODEL_NAME@_acados_sim_free(sim_capsule);
     @MODEL_NAME@_acados_sim_solver_free_capsule(sim_capsule);
     @MODEL_NAME@_acados_free(solver_capsule);

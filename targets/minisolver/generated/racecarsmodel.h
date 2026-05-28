@@ -13,12 +13,10 @@ struct RaceCarsModel {
     static const int NX=6;
     static const int NU=2;
     static const int NC=14;
-    static const int NP=21;
-    static const int P_CALLBACK_TRACK_S_LIN=16;
-    static const int P_CALLBACK_KAPPA=17;
-    static const int P_CALLBACK_KAPPA_D1=18;
-    static const int P_CALLBACK_KAPPA_D2=19;
-    static const int P_CALLBACK_KAPPA_D3=20;
+    static const int NP=62;
+    static const int P_CALLBACK_WINDOW_SEGMENTS=9;
+    static const int P_CALLBACK_BREAKS=16;
+    static const int P_CALLBACK_COEFFS=P_CALLBACK_BREAKS + P_CALLBACK_WINDOW_SEGMENTS + 1;
 
     static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
@@ -1151,20 +1149,44 @@ struct RaceCarsModel {
     }
 
     template <typename T>
+    static inline int callback_race_kappa_segment(const MSVec<T, NP>& p, const T& s) {
+        const double sd = static_cast<double>(s);
+        if (sd < static_cast<double>(p(P_CALLBACK_BREAKS))) {
+            return 0;
+        }
+        if (sd >= static_cast<double>(p(P_CALLBACK_BREAKS + P_CALLBACK_WINDOW_SEGMENTS))) {
+            return P_CALLBACK_WINDOW_SEGMENTS - 1;
+        }
+        for (int i = 0; i < P_CALLBACK_WINDOW_SEGMENTS; ++i) {
+            if (sd < static_cast<double>(p(P_CALLBACK_BREAKS + i + 1))) {
+                return i;
+            }
+        }
+        return P_CALLBACK_WINDOW_SEGMENTS - 1;
+    }
+
+    static inline int callback_race_kappa_coeff_offset(int segment) {
+        return P_CALLBACK_COEFFS + 4 * segment;
+    }
+
+    template <typename T>
     static inline T callback_race_kappa(const MSVec<T, NP>& p, const T& s) {
-        const T ds = s - p(P_CALLBACK_TRACK_S_LIN);
-        return p(P_CALLBACK_KAPPA)
-            + p(P_CALLBACK_KAPPA_D1) * ds
-            + T(0.5) * p(P_CALLBACK_KAPPA_D2) * ds * ds
-            + T(1.0 / 6.0) * p(P_CALLBACK_KAPPA_D3) * ds * ds * ds;
+        const int segment = callback_race_kappa_segment(p, s);
+        const int offset = callback_race_kappa_coeff_offset(segment);
+        const T ds = s - p(P_CALLBACK_BREAKS + segment);
+        T y = p(offset + 0);
+        y = y * ds + p(offset + 1);
+        y = y * ds + p(offset + 2);
+        y = y * ds + p(offset + 3);
+        return y;
     }
 
     template <typename T>
     static inline T callback_race_kappa_d1(const MSVec<T, NP>& p, const T& s) {
-        const T ds = s - p(P_CALLBACK_TRACK_S_LIN);
-        return p(P_CALLBACK_KAPPA_D1)
-            + p(P_CALLBACK_KAPPA_D2) * ds
-            + T(0.5) * p(P_CALLBACK_KAPPA_D3) * ds * ds;
+        const int segment = callback_race_kappa_segment(p, s);
+        const int offset = callback_race_kappa_coeff_offset(segment);
+        const T ds = s - p(P_CALLBACK_BREAKS + segment);
+        return (T(3.0) * p(offset + 0) * ds + T(2.0) * p(offset + 1)) * ds + p(offset + 2);
     }
 
 
@@ -1338,11 +1360,52 @@ ppoly_race_kappa_d1(s);
         "wx5",
         "wu0",
         "wu1",
-        "track_s_lin",
-        "race_kappa",
-        "race_kappa_d1",
-        "race_kappa_d2",
-        "race_kappa_d3",
+        "race_kappa_break_0",
+        "race_kappa_break_1",
+        "race_kappa_break_2",
+        "race_kappa_break_3",
+        "race_kappa_break_4",
+        "race_kappa_break_5",
+        "race_kappa_break_6",
+        "race_kappa_break_7",
+        "race_kappa_break_8",
+        "race_kappa_break_9",
+        "race_kappa_c0_0",
+        "race_kappa_c1_0",
+        "race_kappa_c2_0",
+        "race_kappa_c3_0",
+        "race_kappa_c0_1",
+        "race_kappa_c1_1",
+        "race_kappa_c2_1",
+        "race_kappa_c3_1",
+        "race_kappa_c0_2",
+        "race_kappa_c1_2",
+        "race_kappa_c2_2",
+        "race_kappa_c3_2",
+        "race_kappa_c0_3",
+        "race_kappa_c1_3",
+        "race_kappa_c2_3",
+        "race_kappa_c3_3",
+        "race_kappa_c0_4",
+        "race_kappa_c1_4",
+        "race_kappa_c2_4",
+        "race_kappa_c3_4",
+        "race_kappa_c0_5",
+        "race_kappa_c1_5",
+        "race_kappa_c2_5",
+        "race_kappa_c3_5",
+        "race_kappa_c0_6",
+        "race_kappa_c1_6",
+        "race_kappa_c2_6",
+        "race_kappa_c3_6",
+        "race_kappa_c0_7",
+        "race_kappa_c1_7",
+        "race_kappa_c2_7",
+        "race_kappa_c3_7",
+        "race_kappa_c0_8",
+        "race_kappa_c1_8",
+        "race_kappa_c2_8",
+        "race_kappa_c3_8",
     };
 
 
@@ -1484,7 +1547,22 @@ v*cos(alpha + 0.5*delta)/(-n*ppoly_race_kappa(s) + 1.0);
             case IntegratorType::RK4_IMPLICIT:
             default:
             {
-                kp.f_resid = rk4_step<T>(kp.x, kp.u, kp.p, dt, &kp.A, &kp.B);
+                MSVec<T, NX> x_sub = kp.x;
+                MSMat<T, NX, NX> A_total;
+                MSMat<T, NX, NU> B_total;
+                MatOps::setIdentity(A_total);
+                B_total.setZero();
+                const double sub_dt = dt / 3.0;
+                for (int substep = 0; substep < 3; ++substep) {
+                    MSMat<T, NX, NX> A_step;
+                    MSMat<T, NX, NU> B_step;
+                    x_sub = rk4_step<T>(x_sub, kp.u, kp.p, sub_dt, &A_step, &B_step);
+                    B_total = A_step * B_total + B_step;
+                    A_total = A_step * A_total;
+                }
+                kp.f_resid = x_sub;
+                kp.A = A_total;
+                kp.B = B_total;
                 break;
             }
         }

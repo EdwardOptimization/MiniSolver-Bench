@@ -2,6 +2,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -224,6 +225,38 @@ SolverConfig make_solver_config() {
     config.enable_feasibility_restoration = false;
     config.enable_slack_reset = false;
     return config;
+}
+
+const char* env_value(const char* name) {
+    const char* value = std::getenv(name);
+    return value && value[0] != '\0' ? value : nullptr;
+}
+
+void apply_env_int(const char* name, int& target) {
+    if (const char* value = env_value(name)) {
+        char* end = nullptr;
+        const long parsed = std::strtol(value, &end, 10);
+        if (end != value) {
+            target = static_cast<int>(parsed);
+        }
+    }
+}
+
+void apply_env_double(const char* name, double& target) {
+    if (const char* value = env_value(name)) {
+        char* end = nullptr;
+        const double parsed = std::strtod(value, &end);
+        if (end != value) {
+            target = parsed;
+        }
+    }
+}
+
+void apply_env_bool(const char* name, bool& target) {
+    if (const char* value = env_value(name)) {
+        const std::string text(value);
+        target = !(text == "0" || text == "false" || text == "FALSE" || text == "off" || text == "OFF");
+    }
 }
 
 template <typename... Ts>
@@ -560,7 +593,13 @@ struct RaceStep {
     double total_cost_value = 0.0;
     double max_constraint_violation_value = 0.0;
     double s = 0.0;
+    double n = 0.0;
+    double alpha = 0.0;
     double v = 0.0;
+    double D = 0.0;
+    double delta = 0.0;
+    double derD = 0.0;
+    double derDelta = 0.0;
 };
 
 struct QuadStep {
@@ -873,32 +912,187 @@ constexpr int RACE_P_XREF = 0;
 constexpr int RACE_P_UREF = RACE_P_XREF + RaceCarsModel::NX;
 constexpr int RACE_P_WX = RACE_P_UREF + RaceCarsModel::NU;
 constexpr int RACE_P_WU = RACE_P_WX + RaceCarsModel::NX;
-constexpr int RACE_P_TRACK_S_LIN = RACE_P_WU + RaceCarsModel::NU;
-constexpr int RACE_P_KAPPA = RACE_P_TRACK_S_LIN + 1;
-constexpr int RACE_P_KAPPA_D1 = RACE_P_KAPPA + 1;
-constexpr int RACE_P_KAPPA_D2 = RACE_P_KAPPA_D1 + 1;
-constexpr int RACE_P_KAPPA_D3 = RACE_P_KAPPA_D2 + 1;
-static_assert(RACE_P_KAPPA_D3 + 1 == RaceCarsModel::NP, "race callback parameter offsets must match generated model");
+constexpr int RACE_P_TRACK_BREAKS = RaceCarsModel::P_CALLBACK_BREAKS;
+constexpr int RACE_P_KAPPA_COEFFS = RaceCarsModel::P_CALLBACK_COEFFS;
+constexpr int RACE_ERK_STEPS = 3;
+static_assert(RACE_P_WU + RaceCarsModel::NU == RACE_P_TRACK_BREAKS, "race callback parameter offsets must match generated model");
+static_assert(
+    RACE_P_KAPPA_COEFFS + RaceCarsModel::P_CALLBACK_WINDOW_SEGMENTS * 4 == RaceCarsModel::NP,
+    "race callback parameter offsets must match generated model");
 
-ApiStatus set_race_track_parameters(MiniSolver<RaceCarsModel, 80>& solver, int stage, double s_lin) {
-    using generated::ppoly_eval_derivative;
+void apply_race_env_config(SolverConfig& config) {
+    if (const char* value = env_value("MINISOLVER_RACE_PROFILE")) {
+        const std::string profile(value);
+        if (profile == "strict") {
+            config.termination_profile = TerminationProfile::STRICT_KKT;
+        } else if (profile == "acceptable") {
+            config.termination_profile = TerminationProfile::ACCEPTABLE_NMPC;
+        }
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_INIT")) {
+        const std::string mode(value);
+        if (mode == "cold") {
+            config.initialization = InitializationMode::COLD_START;
+        } else if (mode == "primal") {
+            config.initialization = InitializationMode::REUSE_PRIMAL;
+        } else if (mode == "primal_dual") {
+            config.initialization = InitializationMode::REUSE_PRIMAL_DUAL;
+        }
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_WARM_BARRIER")) {
+        const std::string mode(value);
+        if (mode == "reset") {
+            config.warm_start_barrier = WarmStartBarrierMode::RESET_TO_MU_INIT;
+        } else if (mode == "reuse") {
+            config.warm_start_barrier = WarmStartBarrierMode::REUSE_PREVIOUS_MU;
+        } else if (mode == "gap") {
+            config.warm_start_barrier = WarmStartBarrierMode::FROM_COMPLEMENTARITY_GAP;
+        }
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_WARM_REG")) {
+        const std::string mode(value);
+        if (mode == "reset") {
+            config.warm_start_regularization = WarmStartRegularizationMode::RESET_TO_REG_INIT;
+        } else if (mode == "reuse") {
+            config.warm_start_regularization = WarmStartRegularizationMode::REUSE_PREVIOUS_REG;
+        } else if (mode == "decay") {
+            config.warm_start_regularization = WarmStartRegularizationMode::DECAY_PREVIOUS_REG;
+        }
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_LINE_SEARCH")) {
+        const std::string mode(value);
+        if (mode == "filter") {
+            config.line_search_type = LineSearchType::FILTER;
+        } else if (mode == "merit") {
+            config.line_search_type = LineSearchType::MERIT;
+        } else if (mode == "none") {
+            config.line_search_type = LineSearchType::NONE;
+        }
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_BARRIER")) {
+        const std::string mode(value);
+        if (mode == "mehrotra") {
+            config.barrier_strategy = BarrierStrategy::MEHROTRA;
+        } else if (mode == "adaptive") {
+            config.barrier_strategy = BarrierStrategy::ADAPTIVE;
+        } else if (mode == "monotone") {
+            config.barrier_strategy = BarrierStrategy::MONOTONE;
+        }
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_CONSTRAINT_SCALING")) {
+        const std::string mode(value);
+        config.constraint_scaling =
+            mode == "row" ? ConstraintScalingMethod::ROW_INF_NORM : ConstraintScalingMethod::NONE;
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_OBJECTIVE_SCALING")) {
+        const std::string mode(value);
+        config.objective_scaling =
+            mode == "hessian" ? ObjectiveScalingMethod::HESSIAN_GERSHGORIN : ObjectiveScalingMethod::NONE;
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_PROBLEM_SCALING")) {
+        const std::string mode(value);
+        config.problem_scaling =
+            mode == "ruiz" ? ProblemScalingMethod::RUIZ_EQUILIBRATION : ProblemScalingMethod::NONE;
+    }
+    if (const char* value = env_value("MINISOLVER_RACE_HESSIAN")) {
+        const std::string mode(value);
+        config.hessian_approximation =
+            mode == "exact" ? HessianApproximation::EXACT : HessianApproximation::OBJECTIVE_HESSIAN_ONLY;
+    }
+    apply_env_int("MINISOLVER_RACE_MAX_ITERS", config.max_iters);
+    apply_env_int("MINISOLVER_RACE_LS_MAX_ITERS", config.line_search_max_iters);
+    apply_env_int("MINISOLVER_RACE_RESTORATION_MAX_ITERS", config.max_restoration_iters);
+    apply_env_double("MINISOLVER_RACE_TOL_CON", config.tol_con);
+    apply_env_double("MINISOLVER_RACE_TOL_DUAL", config.tol_dual);
+    apply_env_double("MINISOLVER_RACE_TOL_MU", config.tol_mu);
+    apply_env_double("MINISOLVER_RACE_FEASIBLE_SCALE", config.feasible_tol_scale);
+    apply_env_double("MINISOLVER_RACE_MU_INIT", config.mu_init);
+    apply_env_double("MINISOLVER_RACE_REG_INIT", config.reg_init);
+    apply_env_double("MINISOLVER_RACE_LS_BACKTRACK", config.line_search_backtrack_factor);
+    apply_env_double("MINISOLVER_RACE_LS_TAU", config.line_search_tau);
+    apply_env_bool("MINISOLVER_RACE_SOC", config.enable_soc);
+    apply_env_bool("MINISOLVER_RACE_RESTORATION", config.enable_feasibility_restoration);
+    apply_env_bool("MINISOLVER_RACE_SLACK_RESET", config.enable_slack_reset);
+    apply_env_bool("MINISOLVER_RACE_ROLLOUT", config.enable_line_search_rollout);
+    apply_env_bool("MINISOLVER_RACE_RESIDUAL_STAGNATION", config.enable_residual_stagnation_detection);
+    apply_env_bool("MINISOLVER_RACE_PROFILING", config.enable_profiling);
+}
+
+int find_race_kappa_segment(double s) {
+    using generated::race_kappa_breaks;
+    constexpr int segment_count = static_cast<int>(race_kappa_breaks.size()) - 1;
+    int segment = 0;
+    if (s >= race_kappa_breaks.back()) {
+        segment = segment_count - 1;
+    } else {
+        while (segment + 1 < segment_count && s >= race_kappa_breaks[segment + 1]) {
+            ++segment;
+        }
+    }
+    return segment;
+}
+
+template <typename Setter>
+ApiStatus set_race_track_parameter_values(Setter&& setter, double s_lin) {
     using generated::race_kappa_breaks;
     using generated::race_kappa_coeffs;
 
-    const std::array<std::pair<int, double>, 5> values = {{
-        {RACE_P_TRACK_S_LIN, s_lin},
-        {RACE_P_KAPPA, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 0, s_lin)},
-        {RACE_P_KAPPA_D1, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 1, s_lin)},
-        {RACE_P_KAPPA_D2, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 2, s_lin)},
-        {RACE_P_KAPPA_D3, ppoly_eval_derivative(race_kappa_breaks, race_kappa_coeffs, 3, 3, s_lin)},
-    }};
-    for (const auto& item : values) {
-        const ApiStatus status = solver.set_parameter(stage, item.first, item.second);
+    constexpr int window_segments = RaceCarsModel::P_CALLBACK_WINDOW_SEGMENTS;
+    constexpr int segment_count = static_cast<int>(race_kappa_breaks.size()) - 1;
+    const int center_segment = find_race_kappa_segment(s_lin);
+    const int first_segment = std::clamp(center_segment - window_segments / 2, 0, segment_count - window_segments);
+
+    for (int i = 0; i <= window_segments; ++i) {
+        const ApiStatus status = setter(RACE_P_TRACK_BREAKS + i, race_kappa_breaks[first_segment + i]);
         if (status != ApiStatus::OK) {
             return status;
         }
     }
+
+    for (int segment = 0; segment < window_segments; ++segment) {
+        const int source_offset = 4 * (first_segment + segment);
+        const int target_offset = RACE_P_KAPPA_COEFFS + 4 * segment;
+        for (int coeff = 0; coeff < 4; ++coeff) {
+            const ApiStatus status = setter(target_offset + coeff, race_kappa_coeffs[source_offset + coeff]);
+            if (status != ApiStatus::OK) {
+                return status;
+            }
+        }
+    }
     return ApiStatus::OK;
+}
+
+ApiStatus set_race_track_parameters(MiniSolver<RaceCarsModel, 80>& solver, int stage, double s_lin) {
+    auto setter = [&](int idx, double value) { return solver.set_parameter(stage, idx, value); };
+    return set_race_track_parameter_values(setter, s_lin);
+}
+
+void fill_race_track_parameter_vector(MSVec<double, RaceCarsModel::NP>& p, double s_lin) {
+    auto setter = [&](int idx, double value) {
+        p(idx) = value;
+        return ApiStatus::OK;
+    };
+    set_race_track_parameter_values(setter, s_lin);
+}
+
+std::array<double, RaceCarsModel::NX> integrate_race_closed_loop_state(
+    const std::array<double, RaceCarsModel::NX>& state,
+    const std::vector<double>& control_values) {
+    MSVec<double, RaceCarsModel::NX> sub_state = to_msvec<RaceCarsModel::NX>(state);
+    const MSVec<double, RaceCarsModel::NU> control = to_msvec<RaceCarsModel::NU>(control_values);
+    const double sub_dt = race_cars_tf / static_cast<double>(race_cars_horizon * RACE_ERK_STEPS);
+    for (int substep = 0; substep < RACE_ERK_STEPS; ++substep) {
+        MSVec<double, RaceCarsModel::NP> p;
+        p.setZero();
+        fill_race_track_parameter_vector(p, sub_state(0));
+        sub_state = RaceCarsModel::integrate(
+            sub_state,
+            control,
+            p,
+            sub_dt,
+            IntegratorType::RK4_EXPLICIT);
+    }
+    return to_array(sub_state);
 }
 
 ApiStatus refresh_race_track_parameters(MiniSolver<RaceCarsModel, 80>& solver) {
@@ -973,11 +1167,21 @@ void initialize_race_solver(MiniSolver<RaceCarsModel, 80>& solver, const std::ar
 
 std::vector<RaceStep> run_race_case(const Args& args) {
     SolverConfig config = make_solver_config();
-    // Match the official acados race_cars closed-loop (SQP_RTI): one RTI-style iteration per control step.
-    config.termination_profile = TerminationProfile::RTI_FIXED_ITERATION;
-    config.max_iters = 1;
-    config.tol_con = 1e-2;
-    config.tol_dual = 1e-2;
+    config.termination_profile = TerminationProfile::ACCEPTABLE_NMPC;
+    config.initialization = InitializationMode::REUSE_PRIMAL;
+    config.warm_start_barrier = WarmStartBarrierMode::RESET_TO_MU_INIT;
+    config.warm_start_regularization = WarmStartRegularizationMode::RESET_TO_REG_INIT;
+    config.objective_scaling = ObjectiveScalingMethod::HESSIAN_GERSHGORIN;
+    config.max_iters = 52;
+    config.tol_con = 1e-4;
+    config.tol_dual = 1e-4;
+    config.tol_mu = 1e-4;
+    config.feasible_tol_scale = 20.0;
+    config.enable_soc = true;
+    config.enable_feasibility_restoration = true;
+    config.enable_slack_reset = true;
+    config.enable_line_search_rollout = true;
+    apply_race_env_config(config);
     MiniSolver<RaceCarsModel, 80> warmup_solver(race_cars_horizon, Backend::CPU_SERIAL, config);
     warmup_solver.set_dt(race_cars_tf / static_cast<double>(race_cars_horizon));
     initialize_race_solver(warmup_solver, race_cars_x0);
@@ -986,10 +1190,9 @@ std::vector<RaceStep> run_race_case(const Args& args) {
     for (int i = 0; i < args.warmup_runs; ++i) {
         set_race_cost_parameters(warmup_solver, warm_state[0]);
         warmup_solver.solve();
-        warm_state = to_array<6>(warmup_solver.get_state(1));
+        warm_state = integrate_race_closed_loop_state(warm_state, warmup_solver.get_control(0));
         shift_primal_guess(warmup_solver);
         warmup_solver.set_initial_state(std::vector<double>(warm_state.begin(), warm_state.end()));
-        warmup_solver.reset(ResetOption::ALG_STATE);
     }
 
     MiniSolver<RaceCarsModel, 80> solver(race_cars_horizon, Backend::CPU_SERIAL, config);
@@ -1015,14 +1218,20 @@ std::vector<RaceStep> run_race_case(const Args& args) {
         result.line_search_ms = solver.get_profile_time_ms("Line Search");
         result.total_cost_value = total_cost(solver);
         result.max_constraint_violation_value = max_positive_constraint(solver);
-        result.s = solver.get_state(0, 0);
-        result.v = solver.get_state(0, 3);
+        const auto control = solver.get_control(0);
+        current_state = integrate_race_closed_loop_state(current_state, control);
+        result.s = current_state[0];
+        result.n = current_state[1];
+        result.alpha = current_state[2];
+        result.v = current_state[3];
+        result.D = current_state[4];
+        result.delta = current_state[5];
+        result.derD = control[0];
+        result.derDelta = control[1];
         results.push_back(result);
 
-        current_state = to_array<6>(solver.get_state(1));
         shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
-        solver.reset(ResetOption::ALG_STATE);
 
         if (current_state[0] > race_cars_pathlength + 0.1) {
             auto crossing = std::find_if(
@@ -1045,7 +1254,8 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
     std::filesystem::create_directories(csv_path.parent_path());
 
     std::ofstream out(csv_path);
-    out << "step,backend,status,time_ms,deriv_ms,riccati_ms,line_search_ms,iterations,total_cost,max_constraint_violation,s,v\n";
+    out << "step,backend,status,time_ms,deriv_ms,riccati_ms,line_search_ms,iterations,total_cost,max_constraint_violation,"
+           "s,n,alpha,v,D,delta,derD,derDelta\n";
     for (const auto& result : results) {
         print_csv_line(
             out,
@@ -1060,7 +1270,13 @@ void write_race_outputs(const Args& args, const std::vector<RaceStep>& results) 
             result.total_cost_value,
             result.max_constraint_violation_value,
             result.s,
-            result.v);
+            result.n,
+            result.alpha,
+            result.v,
+            result.D,
+            result.delta,
+            result.derD,
+            result.derDelta);
     }
 
     std::vector<double> times;
@@ -1110,62 +1326,91 @@ constexpr int QUAD_P_XREF = 0;
 constexpr int QUAD_P_UREF = QUAD_P_XREF + QuadrotorNavModel::NX;
 constexpr int QUAD_P_WX = QUAD_P_UREF + QuadrotorNavModel::NU;
 constexpr int QUAD_P_WU = QUAD_P_WX + QuadrotorNavModel::NX;
-constexpr int QUAD_P_TRACK_S_LIN = QUAD_P_WU + QuadrotorNavModel::NU;
-constexpr int QUAD_P_TRACK_X_D1 = QUAD_P_TRACK_S_LIN + 1;
-constexpr int QUAD_P_TRACK_Y_D1 = QUAD_P_TRACK_X_D1 + 5;
-constexpr int QUAD_P_TRACK_Z_D1 = QUAD_P_TRACK_Y_D1 + 5;
-static_assert(QUAD_P_TRACK_Z_D1 + 5 == QuadrotorNavModel::NP, "quad callback parameter offsets must match generated model");
+constexpr int QUAD_P_TRACK_X_BREAKS = QuadrotorNavModel::P_CALLBACK_TRACK_X_BREAKS;
+constexpr int QUAD_P_TRACK_X_COEFFS = QuadrotorNavModel::P_CALLBACK_TRACK_X_COEFFS;
+constexpr int QUAD_P_TRACK_Y_BREAKS = QuadrotorNavModel::P_CALLBACK_TRACK_Y_BREAKS;
+constexpr int QUAD_P_TRACK_Y_COEFFS = QuadrotorNavModel::P_CALLBACK_TRACK_Y_COEFFS;
+constexpr int QUAD_P_TRACK_Z_BREAKS = QuadrotorNavModel::P_CALLBACK_TRACK_Z_BREAKS;
+constexpr int QUAD_P_TRACK_Z_COEFFS = QuadrotorNavModel::P_CALLBACK_TRACK_Z_COEFFS;
+static_assert(QUAD_P_WU + QuadrotorNavModel::NU == QUAD_P_TRACK_X_BREAKS, "quad callback parameter offsets must match generated model");
+static_assert(
+    QUAD_P_TRACK_Z_COEFFS + QuadrotorNavModel::P_CALLBACK_WINDOW_SEGMENTS * 6 == QuadrotorNavModel::NP,
+    "quad callback parameter offsets must match generated model");
+
+template <std::size_t NBreaks>
+int find_quad_track_segment(double s, const std::array<double, NBreaks>& breaks) {
+    constexpr int segment_count = static_cast<int>(NBreaks) - 1;
+    int segment = 0;
+    if (s >= breaks.back()) {
+        segment = segment_count - 1;
+    } else {
+        while (segment + 1 < segment_count && s >= breaks[segment + 1]) {
+            ++segment;
+        }
+    }
+    return segment;
+}
 
 template <std::size_t NBreaks, std::size_t NCoeffs, typename Setter>
 ApiStatus set_quad_track_axis_parameters(
     Setter&& setter,
-    int base_idx,
+    int break_base,
+    int coeff_base,
     double s_lin,
     const std::array<double, NBreaks>& breaks,
     const std::array<double, NCoeffs>& coeffs) {
-    for (int order = 1; order <= 5; ++order) {
-        const double value = generated::ppoly_eval_derivative(breaks, coeffs, 5, order, s_lin);
-        const ApiStatus status = setter(base_idx + order - 1, value);
+    constexpr int window_segments = QuadrotorNavModel::P_CALLBACK_WINDOW_SEGMENTS;
+    constexpr int segment_count = static_cast<int>(NBreaks) - 1;
+    const int center_segment = find_quad_track_segment(s_lin, breaks);
+    const int first_segment = std::clamp(center_segment - window_segments / 2, 0, segment_count - window_segments);
+
+    for (int i = 0; i <= window_segments; ++i) {
+        const ApiStatus status = setter(break_base + i, breaks[first_segment + i]);
         if (status != ApiStatus::OK) {
             return status;
+        }
+    }
+
+    for (int segment = 0; segment < window_segments; ++segment) {
+        const int source_offset = 6 * (first_segment + segment);
+        const int target_offset = coeff_base + 6 * segment;
+        for (int coeff = 0; coeff < 6; ++coeff) {
+            const ApiStatus status = setter(target_offset + coeff, coeffs[source_offset + coeff]);
+            if (status != ApiStatus::OK) {
+                return status;
+            }
         }
     }
     return ApiStatus::OK;
 }
 
 ApiStatus set_quad_track_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, int stage, double s_lin) {
-    ApiStatus status = solver.set_parameter(stage, QUAD_P_TRACK_S_LIN, s_lin);
-    if (status != ApiStatus::OK) {
-        return status;
-    }
-
     auto setter = [&](int idx, double value) { return solver.set_parameter(stage, idx, value); };
-    status = set_quad_track_axis_parameters(
-        setter, QUAD_P_TRACK_X_D1, s_lin, generated::quad_track_x_breaks, generated::quad_track_x_coeffs);
+    ApiStatus status = set_quad_track_axis_parameters(
+        setter, QUAD_P_TRACK_X_BREAKS, QUAD_P_TRACK_X_COEFFS, s_lin, generated::quad_track_x_breaks, generated::quad_track_x_coeffs);
     if (status != ApiStatus::OK) {
         return status;
     }
     status = set_quad_track_axis_parameters(
-        setter, QUAD_P_TRACK_Y_D1, s_lin, generated::quad_track_y_breaks, generated::quad_track_y_coeffs);
+        setter, QUAD_P_TRACK_Y_BREAKS, QUAD_P_TRACK_Y_COEFFS, s_lin, generated::quad_track_y_breaks, generated::quad_track_y_coeffs);
     if (status != ApiStatus::OK) {
         return status;
     }
     return set_quad_track_axis_parameters(
-        setter, QUAD_P_TRACK_Z_D1, s_lin, generated::quad_track_z_breaks, generated::quad_track_z_coeffs);
+        setter, QUAD_P_TRACK_Z_BREAKS, QUAD_P_TRACK_Z_COEFFS, s_lin, generated::quad_track_z_breaks, generated::quad_track_z_coeffs);
 }
 
 void fill_quad_track_parameter_vector(MSVec<double, QuadrotorNavModel::NP>& p, double s_lin) {
-    p(QUAD_P_TRACK_S_LIN) = s_lin;
     auto setter = [&](int idx, double value) {
         p(idx) = value;
         return ApiStatus::OK;
     };
     set_quad_track_axis_parameters(
-        setter, QUAD_P_TRACK_X_D1, s_lin, generated::quad_track_x_breaks, generated::quad_track_x_coeffs);
+        setter, QUAD_P_TRACK_X_BREAKS, QUAD_P_TRACK_X_COEFFS, s_lin, generated::quad_track_x_breaks, generated::quad_track_x_coeffs);
     set_quad_track_axis_parameters(
-        setter, QUAD_P_TRACK_Y_D1, s_lin, generated::quad_track_y_breaks, generated::quad_track_y_coeffs);
+        setter, QUAD_P_TRACK_Y_BREAKS, QUAD_P_TRACK_Y_COEFFS, s_lin, generated::quad_track_y_breaks, generated::quad_track_y_coeffs);
     set_quad_track_axis_parameters(
-        setter, QUAD_P_TRACK_Z_D1, s_lin, generated::quad_track_z_breaks, generated::quad_track_z_coeffs);
+        setter, QUAD_P_TRACK_Z_BREAKS, QUAD_P_TRACK_Z_COEFFS, s_lin, generated::quad_track_z_breaks, generated::quad_track_z_coeffs);
 }
 
 ApiStatus refresh_quad_track_parameters(MiniSolver<QuadrotorNavModel, 80>& solver) {
@@ -1209,7 +1454,7 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
             s0 + (sref - s0) * static_cast<double>(k) / static_cast<double>(N);
         std::array<double, QuadrotorNavModel::NX> xref = {
             sref_k, 0.0, 0.0,
-            1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
             sref_dot, 0.0, 0.0,
             0.0, 0.0, 0.0,
             0.0, 0.0, 0.0,
@@ -1225,7 +1470,7 @@ void set_quad_cost_parameters(MiniSolver<QuadrotorNavModel, 80>& solver, double 
     const double terminal_sref = sref;
     std::array<double, QuadrotorNavModel::NX> xref_terminal = {
         terminal_sref, 0.0, 0.0,
-        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
         sref_dot, 0.0, 0.0,
         0.0, 0.0, 0.0,
         0.0, 0.0, 0.0,
@@ -1253,11 +1498,13 @@ void initialize_quad_solver(MiniSolver<QuadrotorNavModel, 80>& solver, const std
 
 std::vector<QuadStep> run_quad_case(const Args& args) {
     SolverConfig config = make_solver_config();
-    // Match the official acados quadrotor_nav closed-loop (SQP_RTI): one RTI-style iteration per control step.
-    config.termination_profile = TerminationProfile::RTI_FIXED_ITERATION;
-    config.max_iters = 1;
-    config.tol_con = 1e-2;
-    config.tol_dual = 1e-2;
+    config.termination_profile = TerminationProfile::STRICT_KKT;
+    config.initialization = InitializationMode::REUSE_PRIMAL_DUAL;
+    config.warm_start_barrier = WarmStartBarrierMode::REUSE_PREVIOUS_MU;
+    config.warm_start_regularization = WarmStartRegularizationMode::DECAY_PREVIOUS_REG;
+    config.max_iters = 5;
+    config.tol_con = 1e-4;
+    config.tol_dual = 1e-4;
     MiniSolver<QuadrotorNavModel, 80> warmup_solver(quadrotor_nav_horizon, Backend::CPU_SERIAL, config);
     warmup_solver.set_dt(quadrotor_nav_tf / static_cast<double>(quadrotor_nav_horizon));
     initialize_quad_solver(warmup_solver, quadrotor_nav_init_zeta);
@@ -1278,7 +1525,6 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
         warm_state = to_array(next);
         shift_primal_guess(warmup_solver);
         warmup_solver.set_initial_state(std::vector<double>(warm_state.begin(), warm_state.end()));
-        warmup_solver.reset(ResetOption::ALG_STATE);
     }
 
     MiniSolver<QuadrotorNavModel, 80> solver(quadrotor_nav_horizon, Backend::CPU_SERIAL, config);
@@ -1324,7 +1570,6 @@ std::vector<QuadStep> run_quad_case(const Args& args) {
 
         shift_primal_guess(solver);
         solver.set_initial_state(std::vector<double>(current_state.begin(), current_state.end()));
-        solver.reset(ResetOption::ALG_STATE);
     }
     return results;
 }
