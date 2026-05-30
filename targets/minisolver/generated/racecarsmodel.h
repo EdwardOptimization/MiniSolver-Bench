@@ -28,9 +28,8 @@ struct RaceCarsModel {
     static constexpr bool any_l2_constraints = false;
 
     template <typename T>
-    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
+    static void update_l1_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
         kp.l1_weight.setZero();
-        kp.l2_weight.setZero();
         kp.l1_weight(0) = T(100.0);
         kp.l1_weight(1) = T(100.0);
         kp.l1_weight(2) = T(100.0);
@@ -41,6 +40,11 @@ struct RaceCarsModel {
         kp.l1_weight(7) = T(100.0);
         kp.l1_weight(8) = T(100.0);
         kp.l1_weight(9) = T(100.0);
+    }
+
+    template <typename T>
+    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        update_l1_soft_constraint_weights<T>(kp);
     }
 
 

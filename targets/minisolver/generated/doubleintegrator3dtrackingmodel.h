@@ -291,10 +291,9 @@ struct DoubleIntegrator3DTrackingModel {
     // --- 1.5 Update Soft Constraint Weights ---
     template<typename T>
     static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
-        kp.l1_weight.setZero();
-        kp.l2_weight.setZero();
-
+        (void)kp;
     }
+
 
     // --- 2. Compute QP/IPM Constraints (g_val, C, D) ---
     template<typename T>
@@ -307,7 +306,6 @@ struct DoubleIntegrator3DTrackingModel {
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_val.setZero();
         kp.C.setZero();
         kp.D.setZero();
 
@@ -345,9 +343,6 @@ struct DoubleIntegrator3DTrackingModel {
         T az = kp.u(2);
 
 
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_true.setZero();
-
         // g_true
         kp.g_true(0,0) = ax - 15.0;
         kp.g_true(1,0) = -ax - 15.0;
@@ -366,7 +361,6 @@ struct DoubleIntegrator3DTrackingModel {
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_val.setZero();
         kp.C.setZero();
         kp.D.setZero();
 
@@ -394,9 +388,6 @@ struct DoubleIntegrator3DTrackingModel {
     template<typename T>
     static void compute_terminal_true_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
 
-
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_true.setZero();
 
         // g_true
         kp.g_true(0,0) = -15.0;
@@ -438,10 +429,6 @@ struct DoubleIntegrator3DTrackingModel {
         T vy_ref = kp.p(4);
         T vz_ref = kp.p(5);
 
-
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.q.setZero();
-        kp.r.setZero();
 
         // q
         kp.q(0,0) = 30.0*x - 30.0*x_ref;
@@ -513,7 +500,6 @@ template<typename T>
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.q.setZero();
         kp.r.setZero();
 
         // q

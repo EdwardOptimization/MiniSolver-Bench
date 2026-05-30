@@ -624,10 +624,9 @@ struct PendulumModel {
     // --- 1.5 Update Soft Constraint Weights ---
     template<typename T>
     static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
-        kp.l1_weight.setZero();
-        kp.l2_weight.setZero();
-
+        (void)kp;
     }
+
 
     // --- 2. Compute QP/IPM Constraints (g_val, C, D) ---
     template<typename T>
@@ -638,9 +637,7 @@ struct PendulumModel {
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_val.setZero();
         kp.C.setZero();
-        kp.D.setZero();
 
         // g_val
         kp.g_val(0,0) = force - 80.0;
@@ -666,9 +663,6 @@ struct PendulumModel {
         T force = kp.u(0);
 
 
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_true.setZero();
-
         // g_true
         kp.g_true(0,0) = force - 80.0;
         kp.g_true(1,0) = -force - 80.0;
@@ -683,7 +677,6 @@ struct PendulumModel {
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_val.setZero();
         kp.C.setZero();
         kp.D.setZero();
 
@@ -707,9 +700,6 @@ struct PendulumModel {
     template<typename T>
     static void compute_terminal_true_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
 
-
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_true.setZero();
 
         // g_true
         kp.g_true(0,0) = -80.0;
@@ -737,10 +727,6 @@ struct PendulumModel {
         T omega = kp.x(3);
         T force = kp.u(0);
 
-
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.q.setZero();
-        kp.r.setZero();
 
         // q
         kp.q(0,0) = 4000.0*x;
@@ -796,7 +782,6 @@ template<typename T>
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.q.setZero();
         kp.r.setZero();
 
         // q

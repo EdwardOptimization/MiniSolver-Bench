@@ -392,10 +392,9 @@ struct KinematicBicycleTrackModel {
     // --- 1.5 Update Soft Constraint Weights ---
     template<typename T>
     static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
-        kp.l1_weight.setZero();
-        kp.l2_weight.setZero();
-
+        (void)kp;
     }
+
 
     // --- 2. Compute QP/IPM Constraints (g_val, C, D) ---
     template<typename T>
@@ -419,7 +418,6 @@ struct KinematicBicycleTrackModel {
         T tmp_c0 = n_x*(x - x_ref) + n_y*(y - y_ref);
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_val.setZero();
         kp.C.setZero();
         kp.D.setZero();
 
@@ -477,9 +475,6 @@ struct KinematicBicycleTrackModel {
         T delta_max = kp.p(9);
 
 
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_true.setZero();
-
         // g_true
         kp.g_true(0,0) = n_x*(x - x_ref) + n_y*(y - y_ref) - w_left;
         kp.g_true(1,0) = -n_x*(x - x_ref) - n_y*(y - y_ref) - w_right;
@@ -513,7 +508,6 @@ struct KinematicBicycleTrackModel {
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_val.setZero();
         kp.C.setZero();
         kp.D.setZero();
 
@@ -565,9 +559,6 @@ struct KinematicBicycleTrackModel {
         T delta_max = kp.p(9);
 
 
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.g_true.setZero();
-
         // g_true
         kp.g_true(0,0) = n_x*(x - x_ref) + n_y*(y - y_ref) - w_left;
         kp.g_true(1,0) = -n_x*(x - x_ref) - n_y*(y - y_ref) - w_right;
@@ -618,10 +609,6 @@ struct KinematicBicycleTrackModel {
         T tmp_j7 = tmp_j4*tmp_j6;
         T tmp_j8 = tmp_j5*tmp_j6;
         T tmp_j9 = 5.0*tmp_j7 + 5.0*tmp_j8;
-
-        // Clear generated output packets; nonzero entries are assigned below.
-        kp.q.setZero();
-        kp.r.setZero();
 
         // q
         kp.q(0,0) = 20.0*x - 20.0*x_ref;
@@ -686,7 +673,6 @@ template<typename T>
 
 
         // Clear generated output packets; nonzero entries are assigned below.
-        kp.q.setZero();
         kp.r.setZero();
 
         // q

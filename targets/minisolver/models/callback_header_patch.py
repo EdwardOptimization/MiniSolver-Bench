@@ -47,9 +47,6 @@ def _quad_callback_param_names() -> str:
 
 
 def _ensure_race_soft_constraint_contract(text: str) -> str:
-    if "constraint_has_l1" in text and "update_soft_constraint_weights" in text:
-        return text
-
     soft_contract = (
         "    static constexpr std::array<bool, NC> constraint_has_l1 = "
         "{true, true, true, true, true, true, true, true, true, true, false, false, false, false};\n"
@@ -58,9 +55,8 @@ def _ensure_race_soft_constraint_contract(text: str) -> str:
         "    static constexpr bool any_l1_constraints = true;\n"
         "    static constexpr bool any_l2_constraints = false;\n\n"
         "    template <typename T>\n"
-        "    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
+        "    static void update_l1_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
         "        kp.l1_weight.setZero();\n"
-        "        kp.l2_weight.setZero();\n"
         "        kp.l1_weight(0) = T(100.0);\n"
         "        kp.l1_weight(1) = T(100.0);\n"
         "        kp.l1_weight(2) = T(100.0);\n"
@@ -72,7 +68,30 @@ def _ensure_race_soft_constraint_contract(text: str) -> str:
         "        kp.l1_weight(8) = T(100.0);\n"
         "        kp.l1_weight(9) = T(100.0);\n"
         "    }\n\n"
+        "    template <typename T>\n"
+        "    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
+        "        update_l1_soft_constraint_weights<T>(kp);\n"
+        "    }\n\n"
     )
+    old_soft_contract = soft_contract.replace(
+        "    static void update_l1_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
+        "        kp.l1_weight.setZero();\n",
+        "    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
+        "        kp.l1_weight.setZero();\n"
+        "        kp.l2_weight.setZero();\n",
+    ).replace(
+        "    }\n\n"
+        "    template <typename T>\n"
+        "    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
+        "        update_l1_soft_constraint_weights<T>(kp);\n"
+        "    }\n\n",
+        "    }\n\n",
+    )
+    if old_soft_contract in text:
+        return text.replace(old_soft_contract, soft_contract, 1)
+    if "constraint_has_l1" in text and "update_soft_constraint_weights" in text:
+        return text
+
     anchor = (
         "    static constexpr std::array<int, NC> constraint_types = "
         "{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};\n"
