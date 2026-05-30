@@ -1,6 +1,6 @@
 # Latest Official Compatibility Report
 
-Date: 2026-05-28
+Date: 2026-05-30
 
 This report covers official acados-derived compatibility/reference cases. It is not the default headline ranking report.
 
@@ -8,25 +8,25 @@ For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step 
 
 ## Provenance
 
-- `nmpc-bench`: `3faf4766d6fe6ba6edc921a52d6af236d7bf60a0`
+- `nmpc-bench`: `70fa6cac9864422fa3693e02b719b7e0edb4d4c4`
 - `acados`: `third_party/acados` at `47b961bcaf493de59048918ffaa585181466ea65`
-- `MiniSolver`: `third_party/MiniSolver` at `f4356047c2213a7c7b5d66187bc62118ed5eab8d`
+- `MiniSolver`: `third_party/MiniSolver` at `5816a5b44318b6f97ef7076c3384216bb97454e5`
   - branch: `detached`
 
 ## Summary
 
 | Backend | Case | Steps | Success | Median ms | P95 ms | Max ms | Extra |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `minisolver` | `pendulum_on_cart` | 100 | 1 | 0.0365605 | 0.0400776 | 0.05198 | `avg_iterations=1`, `max_constraint_violation=0`, `final_theta_abs=0.00102476` |
+| `minisolver` | `pendulum_on_cart` | 100 | 1 | 0.0366505 | 0.0401524 | 0.080501 | `avg_iterations=1`, `max_constraint_violation=0`, `final_theta_abs=0.00102476` |
 | `acados` | `pendulum_on_cart` | 100 | 1 | 0.5495 | 0.8693 | 1.485 | `avg_iterations=1`, `final_theta_abs=0.0247401` |
 | `casadi` | `pendulum_on_cart` | 100 | 0.98 | 1.70865 | 278.006 | 1619.77 | `avg_iterations=2.89796`, `final_theta_abs=0.0016704` |
-| `minisolver` | `race_cars` | 266 | 1 | 1.8048 | 3.45455 | 5.49911 | `avg_iterations=7.71805`, `max_constraint_violation=0.0001059`, `avg_speed=1.39569` |
+| `minisolver` | `race_cars` | 266 | 1 | 1.74239 | 3.31109 | 5.28262 | `avg_iterations=7.71805`, `max_constraint_violation=0.0001059`, `avg_speed=1.39569` |
 | `acados` | `race_cars` | 344 | 1 | 0.724 | 0.92685 | 2.129 | `avg_iterations=10.593`, `avg_speed=1.35207` |
 | `casadi` | `race_cars` | 500 | 0 | 2.4517 | 2.51766 | 2851.95 | `avg_speed=nan` |
-| `minisolver` | `quadrotor_nav` | 1560 | 1 | 1.243 | 1.29983 | 1.47449 | `avg_iterations=1`, `max_constraint_violation=0`, `avg_abs_n=0.0399727`, `avg_abs_b=0.00086986` |
+| `minisolver` | `quadrotor_nav` | 1566 | 1 | 1.53335 | 1.57866 | 3.60234 | `avg_iterations=2.00192`, `max_constraint_violation=0`, `avg_abs_n=0.000126632`, `avg_abs_b=1.54681e-05` |
 | `acados` | `quadrotor_nav` | 1566 | 1 | 2.5 | 2.6305 | 3.597 | `avg_abs_n=5.49982e-05`, `avg_abs_b=1.654e-05` |
 | `casadi` | `quadrotor_nav` | 1566 | 1 | 277.058 | 285.742 | 504.462 | `avg_iterations=1.00702`, `avg_abs_n=4.41991e-05`, `avg_abs_b=1.51695e-05` |
-| `minisolver` | `chain_mass` | 25 | 1 | 2.21131 | 3.812 | 5.70549 | `avg_iterations=3.52`, `max_constraint_violation=0`, `min_wall_dist=0.00112253` |
+| `minisolver` | `chain_mass` | 25 | 1 | 2.02788 | 3.72461 | 5.642 | `avg_iterations=3.52`, `max_constraint_violation=0`, `min_wall_dist=0.00112113` |
 | `acados` | `chain_mass` | 25 | 1 | 5.974 | 9.4886 | 9.653 | `min_wall_dist=-0.00841888` |
 | `casadi` | `chain_mass` | 25 | 1 | 360.629 | 387.148 | 408.922 | `avg_iterations=2.32`, `min_wall_dist=-0.000475765` |
 
@@ -43,21 +43,21 @@ For same-asset, same-model-family, same-`dt`, same-horizon, same-requested-step 
 
 ## Pairwise Comparison
 
-- `pendulum_on_cart`: `acados/MiniSolver` latency ratio is `median 15.03x`, `p95 21.69x`.
+- `pendulum_on_cart`: `acados/MiniSolver` latency ratio is `median 14.99x`, `p95 21.65x`.
 - `pendulum_on_cart`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `pendulum_on_cart`: `CasADi/MiniSolver` latency ratio is `median 46.73x`, `p95 6936.71x`.
+- `pendulum_on_cart`: `CasADi/MiniSolver` latency ratio is `median 46.62x`, `p95 6923.77x`.
 - `pendulum_on_cart`: success is `MiniSolver 100.00%` vs `CasADi 98.00%`.
-- `race_cars`: `acados/MiniSolver` latency ratio is `median 0.40x`, `p95 0.27x`.
+- `race_cars`: `acados/MiniSolver` latency ratio is `median 0.42x`, `p95 0.28x`.
 - `race_cars`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `race_cars`: `CasADi/MiniSolver` latency ratio is `median 1.36x`, `p95 0.73x`.
+- `race_cars`: `CasADi/MiniSolver` latency ratio is `median 1.41x`, `p95 0.76x`.
 - `race_cars`: success is `MiniSolver 100.00%` vs `CasADi 0.00%`.
-- `quadrotor_nav`: `acados/MiniSolver` latency ratio is `median 2.01x`, `p95 2.02x`.
+- `quadrotor_nav`: `acados/MiniSolver` latency ratio is `median 1.63x`, `p95 1.67x`.
 - `quadrotor_nav`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `quadrotor_nav`: `CasADi/MiniSolver` latency ratio is `median 222.90x`, `p95 219.83x`.
+- `quadrotor_nav`: `CasADi/MiniSolver` latency ratio is `median 180.69x`, `p95 181.00x`.
 - `quadrotor_nav`: success is `MiniSolver 100.00%` vs `CasADi 100.00%`.
-- `chain_mass`: `acados/MiniSolver` latency ratio is `median 2.70x`, `p95 2.49x`.
+- `chain_mass`: `acados/MiniSolver` latency ratio is `median 2.95x`, `p95 2.55x`.
 - `chain_mass`: success is `MiniSolver 100.00%` vs `acados 100.00%`.
-- `chain_mass`: `CasADi/MiniSolver` latency ratio is `median 163.08x`, `p95 101.56x`.
+- `chain_mass`: `CasADi/MiniSolver` latency ratio is `median 177.84x`, `p95 103.94x`.
 - `chain_mass`: success is `MiniSolver 100.00%` vs `CasADi 100.00%`.
 
 ## Files

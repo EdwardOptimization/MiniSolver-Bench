@@ -22,6 +22,27 @@ struct RaceCarsModel {
 
     static constexpr std::array<double, NC> constraint_weights = {100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0, 0.0, 0.0, 0.0};
     static constexpr std::array<int, NC> constraint_types = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
+    static constexpr std::array<bool, NC> constraint_has_l1 = {true, true, true, true, true, true, true, true, true, true, false, false, false, false};
+    static constexpr std::array<bool, NC> constraint_has_l2 = {false, false, false, false, false, false, false, false, false, false, false, false, false, false};
+    static constexpr bool any_l1_constraints = true;
+    static constexpr bool any_l2_constraints = false;
+
+    template <typename T>
+    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        kp.l1_weight.setZero();
+        kp.l2_weight.setZero();
+        kp.l1_weight(0) = T(100.0);
+        kp.l1_weight(1) = T(100.0);
+        kp.l1_weight(2) = T(100.0);
+        kp.l1_weight(3) = T(100.0);
+        kp.l1_weight(4) = T(100.0);
+        kp.l1_weight(5) = T(100.0);
+        kp.l1_weight(6) = T(100.0);
+        kp.l1_weight(7) = T(100.0);
+        kp.l1_weight(8) = T(100.0);
+        kp.l1_weight(9) = T(100.0);
+    }
+
 
 
     // --- Piecewise Polynomial Helpers (Generated) ---

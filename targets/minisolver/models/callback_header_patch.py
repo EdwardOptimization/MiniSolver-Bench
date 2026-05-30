@@ -46,10 +46,45 @@ def _quad_callback_param_names() -> str:
     return "".join(lines)
 
 
+def _ensure_race_soft_constraint_contract(text: str) -> str:
+    if "constraint_has_l1" in text and "update_soft_constraint_weights" in text:
+        return text
+
+    soft_contract = (
+        "    static constexpr std::array<bool, NC> constraint_has_l1 = "
+        "{true, true, true, true, true, true, true, true, true, true, false, false, false, false};\n"
+        "    static constexpr std::array<bool, NC> constraint_has_l2 = "
+        "{false, false, false, false, false, false, false, false, false, false, false, false, false, false};\n"
+        "    static constexpr bool any_l1_constraints = true;\n"
+        "    static constexpr bool any_l2_constraints = false;\n\n"
+        "    template <typename T>\n"
+        "    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {\n"
+        "        kp.l1_weight.setZero();\n"
+        "        kp.l2_weight.setZero();\n"
+        "        kp.l1_weight(0) = T(100.0);\n"
+        "        kp.l1_weight(1) = T(100.0);\n"
+        "        kp.l1_weight(2) = T(100.0);\n"
+        "        kp.l1_weight(3) = T(100.0);\n"
+        "        kp.l1_weight(4) = T(100.0);\n"
+        "        kp.l1_weight(5) = T(100.0);\n"
+        "        kp.l1_weight(6) = T(100.0);\n"
+        "        kp.l1_weight(7) = T(100.0);\n"
+        "        kp.l1_weight(8) = T(100.0);\n"
+        "        kp.l1_weight(9) = T(100.0);\n"
+        "    }\n\n"
+    )
+    anchor = (
+        "    static constexpr std::array<int, NC> constraint_types = "
+        "{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};\n"
+    )
+    return _insert_after_once(text, anchor, soft_contract, "race soft constraint contract")
+
+
 def ensure_race_callback_header(header_path: Path) -> None:
     if not header_path.exists():
         raise FileNotFoundError(f"missing generated base header: {header_path}")
     text = header_path.read_text(encoding="utf-8")
+    text = _ensure_race_soft_constraint_contract(text)
 
     race_window_np = 16 + (RACE_CALLBACK_WINDOW_SEGMENTS + 1) + RACE_CALLBACK_WINDOW_SEGMENTS * 4
     race_window_constants = (

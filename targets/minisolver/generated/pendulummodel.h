@@ -22,8 +22,10 @@ struct PendulumModel {
 
     static constexpr IntegratorType generated_integrator = IntegratorType::RK4_EXPLICIT;
 
-    static constexpr std::array<double, NC> constraint_weights = {0.0, 0.0};
-    static constexpr std::array<int, NC> constraint_types = {0, 0};
+    static constexpr std::array<bool, NC> constraint_has_l1 = {false, false};
+    static constexpr std::array<bool, NC> constraint_has_l2 = {false, false};
+    static constexpr bool any_l1_constraints = false;
+    static constexpr bool any_l2_constraints = false;
 
 
     // --- Name Arrays (for Map Construction) ---
@@ -619,6 +621,14 @@ struct PendulumModel {
         }
     }
 
+    // --- 1.5 Update Soft Constraint Weights ---
+    template<typename T>
+    static void update_soft_constraint_weights(KnotPoint<T,NX,NU,NC,NP>& kp) {
+        kp.l1_weight.setZero();
+        kp.l2_weight.setZero();
+
+    }
+
     // --- 2. Compute QP/IPM Constraints (g_val, C, D) ---
     template<typename T>
     static void compute_qp_constraints(KnotPoint<T,NX,NU,NC,NP>& kp) {
@@ -829,6 +839,7 @@ template<typename T>
     // --- 4. Compute All (Convenience) ---
     template<typename T>
     static void compute(KnotPoint<T,NX,NU,NC,NP>& kp, IntegratorType type, double dt) {
+        update_soft_constraint_weights(kp);
         compute_dynamics(kp, type, dt);
         compute_qp_constraints(kp);
         compute_true_constraints(kp);
@@ -837,6 +848,7 @@ template<typename T>
 
     template<typename T>
     static void compute_exact(KnotPoint<T,NX,NU,NC,NP>& kp, IntegratorType type, double dt) {
+        update_soft_constraint_weights(kp);
         compute_dynamics(kp, type, dt);
         compute_qp_constraints(kp);
         compute_true_constraints(kp);
